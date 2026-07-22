@@ -21,7 +21,12 @@
 
     // tsconfig uses `"jsx": "react-jsx"` (the automatic runtime), so React
     // need not be in scope and this classic-runtime rule never applies.
-    "react/react-in-jsx-scope": "off"
+    "react/react-in-jsx-scope": "off",
+
+    // `_splat` is TanStack Router's own name for the splat param on a `$`
+    // route. We do not get to pick it, and the routes serving R2 keys (which
+    // contain slashes) require a splat.
+    "no-underscore-dangle": ["error", { "allow": ["_splat"] }]
   },
   "ignorePatterns": [
     "src/routeTree.gen.ts",

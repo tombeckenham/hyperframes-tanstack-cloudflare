@@ -24,6 +24,12 @@ import {
 } from '@tanstack/ai-sandbox'
 import { claudeCodeText } from '@tanstack/ai-claude-code'
 import { namedCloudflareSandbox } from './sandbox-provider'
+import { hyperframesRecipe } from './tools/recipe'
+import {
+  listArtifactsTool,
+  publishCompositionTool,
+  publishRenderTool,
+} from './tools/publish'
 import type { SandboxAgentEnv } from '@tanstack/ai-sandbox-cloudflare/agent'
 
 /**
@@ -69,10 +75,19 @@ export const agent = createCloudflareSandboxAgent<AppEnv>({
   // host tool rather than a system prompt — see Phase 3.
   systemPrompts: [PREVIEW_GUIDANCE],
 
-  // Host tools, bridged to the in-sandbox agent over MCP at `/_bridge`.
-  // `exposePreviewTool` closes over the run's threadId + env, so it must be
-  // built per run here rather than hoisted to module scope.
-  tools: (input, env) => [exposePreviewTool(input, env)],
+  // Host tools, bridged to the in-sandbox agent over MCP at `/_bridge`. All but
+  // the recipe close over the run's threadId + env, so they are built per run
+  // here rather than hoisted to module scope.
+  //
+  // This is the lane for everything the sandbox must not do itself: minting
+  // preview URLs, holding the R2 binding, and deciding the public key space.
+  tools: (input, env) => [
+    hyperframesRecipe,
+    exposePreviewTool(input, env),
+    publishCompositionTool(input, env),
+    publishRenderTool(input, env),
+    listArtifactsTool(input, env),
+  ],
 
   sandbox: (input, env) =>
     defineSandbox({

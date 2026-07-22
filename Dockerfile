@@ -130,6 +130,28 @@ RUN npm install -g hyperframes ffmpeg-static @ffprobe-installer/ffprobe \
 # start would pay it again.
 RUN hyperframes browser ensure
 
+# `bundleToSingleHtml` — compiles a project into ONE self-contained HTML file,
+# which the host then publishes to R2 so a composition outlives the container
+# that produced it. It ships in `@hyperframes/core`, which the `hyperframes` CLI
+# bundles internally rather than exposing, so it must be installed separately.
+#
+# Deliberately placed AFTER `browser ensure`: that layer downloads
+# chrome-headless-shell, and putting this above it would invalidate the cache
+# and re-download Chrome on every change here.
+#
+# The local `node_modules` symlink is what makes `import
+# '@hyperframes/core/compiler'` resolve. NODE_PATH cannot do this job — it is
+# not consulted by ESM resolution, and that subpath is exported with an `import`
+# condition only (a CJS `require` of it fails with ERR_PACKAGE_PATH_NOT_EXPORTED,
+# which looks like a missing export but is not).
+RUN npm install -g @hyperframes/core \
+ && mkdir -p /usr/local/lib/hyperframes \
+ && ln -sfn "$(npm root -g)" /usr/local/lib/hyperframes/node_modules
+COPY container/bundle.mjs /usr/local/lib/hyperframes/bundle.mjs
+RUN node /usr/local/lib/hyperframes/bundle.mjs 2>&1 \
+      | grep -q 'usage: bundle.mjs' \
+ && echo 'bundle.mjs: import graph resolves'
+
 # Build-time assertion: `doctor` checks node/ffmpeg/ffprobe/browser wiring end
 # to end. Running it here means a broken image fails `docker build` — visible to
 # whoever changed this file — instead of failing an agent run in production,
