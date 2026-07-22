@@ -63,11 +63,17 @@ Browser ──POST /api/run──▶ Start server route ──DO RPC──▶ Ru
 
 1. **Worker (`src/server.ts`)** — custom Cloudflare entry. Re-exports the DO classes so
    wrangler's `class_name` bindings resolve, and routes in strict order:
-   `proxyToSandbox` (hostname-routed preview traffic) → agent paths
-   (`/runs`, `/_bridge`, `/tool-exec`) → TanStack Start SSR + `/api/*`.
-   Those three root paths are **reserved for the agent** — do not add app routes there.
-2. **`RunCoordinator` Durable Object** — owns a run. `POST /runs` returns `202` after
-   registering the run; the DO drives `chat()` under `ctx.waitUntil` plus a watchdog
+   `proxyToSandbox` (hostname-routed preview traffic) → **`/_bridge`** → TanStack Start
+   SSR + `/api/*`. `/_bridge` is **reserved for the agent** — do not add app routes there.
+
+   `/runs` and `/tool-exec` are **deliberately not routed**. The package's `/runs`
+   trigger has no authentication — it takes `threadId` straight from the body and does
+   `idFromName(threadId)` — so exposing it let anyone start a run in any thread, and a
+   thread's container holds `ANTHROPIC_API_KEY`. Nothing needs it over HTTP (the browser
+   goes through `/api/run` over the binding). `/tool-exec` is `colocated`-mode only, and
+   this app runs `do-drives`. Removing them beats authenticating them.
+2. **`RunCoordinator` Durable Object** — owns a run. `startRun()` over the binding
+   registers it; the DO drives `chat()` under `ctx.waitUntil` plus a watchdog
    alarm, appends every `StreamChunk` to a `seq`-indexed durable log, and serves
    resumable WebSocket tails. A Worker invocation never holds a multi-minute agent loop.
 3. **Sandbox container** — the `claude` CLI *and* the HyperFrames toolchain (Node 22,
@@ -78,9 +84,28 @@ Browser ──POST /api/run──▶ Start server route ──DO RPC──▶ Ru
 
 `useChat` speaks "POST a body, read SSE back"; the coordinator speaks
 "POST-then-WebSocket". `src/routes/api.run.ts` bridges the two. It addresses the
-coordinator **over the `RUN_COORDINATOR` binding**, not via `fetch('/runs')` — a Worker
-fetching its own hostname is a same-zone self-subrequest, which Cloudflare blocks in
-production (error 1042 → 404) even though it resolves fine in local `workerd`.
+coordinator **over the `RUN_COORDINATOR` binding**, not via `fetch('/runs')` — for two
+independent reasons. A Worker fetching its own hostname is a same-zone self-subrequest,
+which Cloudflare blocks in production (error 1042 → 404) even though it resolves fine in
+local `workerd`; and `/runs` is no longer routed publicly at all (see above).
+
+### Thread identity — never trust a client-supplied `threadId`
+
+A run's container is pinned to its `threadId` and every container carries
+`ANTHROPIC_API_KEY`, so whoever can name a `threadId` can reach that container. `/api/run`
+must therefore derive it via `src/lib/session.ts`:
+
+```
+sessionId  256-bit random, HttpOnly cookie (opaque — nothing stored, nothing verified)
+threadKey  client-chosen, one per chat thread, not a secret
+threadId   SHA-256(sessionId \0 threadKey)
+```
+
+Two visitors picking the same `threadKey` get different threads, and reaching someone
+else's means guessing 256 bits. The hash matters: `threadId` becomes a container DO name
+and appears in R2 keys and the run log, so it must not carry the session id in recoverable
+form. This is tenant scoping, not authentication — when real accounts arrive, seed the
+session id from the authenticated user and the rest holds.
 
 ### Host tools and the MCP bridge
 

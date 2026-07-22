@@ -102,15 +102,17 @@ export const agent = createCloudflareSandboxAgent<AppEnv>({
         // Nothing to clone — the container image already ships the `claude`
         // CLI and the whole HyperFrames toolchain.
         source: { type: 'none' },
-        // TODO(phase-5): deploy blocker. `POST /runs` is unauthenticated and
-        // `threadId` comes straight from the client, and the container is
-        // pinned to that threadId — so anyone who guesses or reuses a threadId
-        // reaches the same container and workspace, each of which carries this
-        // key. CLAUDE.md: "do not put one user's secret in a sandbox another
-        // user can reach; the sandbox runs LLM-authored code." Inherited from
-        // the upstream example, which is a local demo. Before shipping, put
-        // auth in front of /runs and derive threadId from the session rather
-        // than trusting the body.
+        // Every container carries this key, and the container is pinned to
+        // `threadId` — so whoever can NAME a threadId can reach the workspace
+        // holding it. CLAUDE.md: "do not put one user's secret in a sandbox
+        // another user can reach; the sandbox runs LLM-authored code."
+        //
+        // Two things keep that closed, and both must stay true:
+        //   1. `/runs` is not routed publicly (src/server.ts). The package's
+        //      trigger takes threadId from the request body with no auth.
+        //   2. `threadId` is derived, never client-supplied — see
+        //      src/lib/session.ts. `/api/run` MUST use `deriveThreadId`; a raw
+        //      value from the request body reopens the hole.
         secrets: createSecrets({
           ANTHROPIC_API_KEY: requireAnthropicKey(env),
         }),
