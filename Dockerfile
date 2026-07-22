@@ -12,9 +12,13 @@
 # for on every cold start; and a run-time `npm install` inside a sandbox that is
 # executing LLM-authored code is exactly the failure mode we don't want.
 #
-# Pin the base tag to the @cloudflare/sandbox version in package.json (0.12.4)
-# so the in-container control server (port 3000 — exec/files/processes/ports)
-# speaks the same protocol as the SDK the Worker is built against.
+# This tag MUST equal the @cloudflare/sandbox version in package.json, so the
+# in-container control server (port 3000 — exec/files/processes/ports) speaks
+# the same protocol as the SDK the Worker is built against. package.json pins
+# that dependency EXACTLY ("0.12.4", no caret) for this reason: under a caret
+# range a routine `bun install` would resolve a newer SDK against this fixed
+# image, and the mismatch would surface as an opaque control-plane error inside
+# an agent run rather than at build time. Bump both together, never one.
 #
 # Base is Ubuntu 22.04 "jammy", published amd64-only. That matters twice:
 #   - package names follow jammy, NOT Debian bookworm and NOT Ubuntu 24.04
@@ -150,7 +154,7 @@ RUN hyperframes browser ensure
 # no-op. Note we do NOT gate on the top-level `.ok`, which is false whenever any
 # OPTIONAL check fails — the image would then never build.
 RUN hyperframes doctor --json > /tmp/doctor.json \
- && hyperframes doctor \
+ && cat /tmp/doctor.json \
  && node -e " \
       const r = require('/tmp/doctor.json'); \
       const required = ['Node.js', 'FFmpeg', 'FFprobe', 'Chrome']; \
