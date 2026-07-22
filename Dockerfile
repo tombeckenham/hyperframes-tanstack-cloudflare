@@ -29,6 +29,14 @@
 #     so amd64 is the right target regardless.
 FROM docker.io/cloudflare/sandbox:0.12.4
 
+# Pinned so the image cannot drift away from the recipe. src/tools/recipe.ts
+# states command and flag behaviour "verified against the CLI installed in this
+# image" — an unpinned `npm install -g` would silently falsify that on the next
+# rebuild. The CLI and @hyperframes/core are released in lockstep and
+# `bundleToSingleHtml` output has to match the runtime the CLI renders with, so
+# both take this same version.
+ARG HYPERFRAMES_VERSION=0.7.68
+
 # Claude Code CLI. `node` + `npm` are already on the base image.
 # `--include=optional` is REQUIRED, not a nicety: the CLI's native binary ships
 # as a platform-specific OPTIONAL dependency, and a plain `-g` install can skip
@@ -115,7 +123,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # The `-version` calls then assert both symlinks resolve AND that the binaries
 # match the image architecture, so a cross-arch mistake surfaces right here
 # instead of halfway through a render.
-RUN npm install -g hyperframes ffmpeg-static @ffprobe-installer/ffprobe \
+RUN npm install -g hyperframes@${HYPERFRAMES_VERSION} ffmpeg-static @ffprobe-installer/ffprobe \
  && ln -sf "$(NODE_PATH="$(npm root -g)" node -p 'require("ffmpeg-static")')" \
       /usr/local/bin/ffmpeg \
  && ln -sf "$(NODE_PATH="$(npm root -g)" node -p 'require("@ffprobe-installer/ffprobe").path')" \
@@ -129,6 +137,28 @@ RUN npm install -g hyperframes ffmpeg-static @ffprobe-installer/ffprobe \
 # frame — inside a sandbox whose disk is thrown away afterwards, so every cold
 # start would pay it again.
 RUN hyperframes browser ensure
+
+# `bundleToSingleHtml` — compiles a project into ONE self-contained HTML file,
+# which the host then publishes to R2 so a composition outlives the container
+# that produced it. It ships in `@hyperframes/core`, which the `hyperframes` CLI
+# bundles internally rather than exposing, so it must be installed separately.
+#
+# Deliberately placed AFTER `browser ensure`: that layer downloads
+# chrome-headless-shell, and putting this above it would invalidate the cache
+# and re-download Chrome on every change here.
+#
+# The local `node_modules` symlink is what makes `import
+# '@hyperframes/core/compiler'` resolve. NODE_PATH cannot do this job — it is
+# not consulted by ESM resolution, and that subpath is exported with an `import`
+# condition only (a CJS `require` of it fails with ERR_PACKAGE_PATH_NOT_EXPORTED,
+# which looks like a missing export but is not).
+RUN npm install -g @hyperframes/core@${HYPERFRAMES_VERSION} \
+ && mkdir -p /usr/local/lib/hyperframes \
+ && ln -sfn "$(npm root -g)" /usr/local/lib/hyperframes/node_modules
+COPY container/bundle.mjs /usr/local/lib/hyperframes/bundle.mjs
+RUN node /usr/local/lib/hyperframes/bundle.mjs 2>&1 \
+      | grep -q 'usage: bundle.mjs' \
+ && echo 'bundle.mjs: import graph resolves'
 
 # Build-time assertion: `doctor` checks node/ffmpeg/ffprobe/browser wiring end
 # to end. Running it here means a broken image fails `docker build` — visible to
