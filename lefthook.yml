@@ -6,8 +6,13 @@ pre-commit:
   parallel: true
   jobs:
     - name: lint
-      glob: '*.{ts,tsx,js,jsx,mjs,cjs}'
-      run: bunx oxlint {staged_files}
+      glob: '*.{ts,tsx,mts,cts,js,jsx,mjs,cjs}'
+      # --no-error-on-unmatched-pattern: `glob` decides whether the job runs,
+      # but .oxlintrc.json ignorePatterns then filters the paths. Without the
+      # flag, staging only ignored files — any `shadcn add` component, a
+      # regenerated worker-configuration.d.ts, or routeTree.gen.ts — leaves
+      # oxlint with nothing to lint and it exits 1, blocking a valid commit.
+      run: bunx oxlint --no-error-on-unmatched-pattern {staged_files}
 
     - name: format
       # Formatting covers more than the lint globs (css, jsonc), so let oxfmt
