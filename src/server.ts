@@ -9,9 +9,10 @@
  * Routing order is load-bearing:
  *   1. `proxyToSandbox` — sandbox preview-port traffic, routed by HOSTNAME, so
  *      it gets first refusal before any path-based routing.
- *   2. the agent Worker — `/runs`, `/_bridge`, `/tool-exec`. The container
- *      calls back on the root-level `/_bridge` and `/tool-exec` paths, so those
- *      roots are RESERVED for the agent; app routes must go elsewhere.
+ *   2. the agent Worker — `/_bridge` ONLY. The container calls back on that
+ *      root, so it is RESERVED for the agent; app routes must go elsewhere.
+ *      `/runs` and `/tool-exec` are deliberately NOT routed — see AGENT_PATHS
+ *      below before adding either back.
  *   3. TanStack Start — the UI and its `/api/*` server routes.
  *
  * @see https://developers.cloudflare.com/workers/framework-guides/web-apps/tanstack-start/

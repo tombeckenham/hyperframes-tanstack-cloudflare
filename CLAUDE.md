@@ -107,6 +107,23 @@ and appears in R2 keys and the run log, so it must not carry the session id in r
 form. This is tenant scoping, not authentication — when real accounts arrive, seed the
 session id from the authenticated user and the rest holds.
 
+`deriveThreadId` returns a **branded `ThreadId`**, so a raw `string` from a request body
+will not compile at the `startRun` call site. That is deliberate: a comment cannot enforce
+this invariant, the type can.
+
+### The `/api/run` contract
+
+Three things it MUST do, none of which the type system can supply for you:
+
+1. `threadId` — from `deriveThreadId(sessionId, threadKey)`. Never from the body.
+2. `setCookie` — attach `resolveSession()`'s value to the response when non-null, or the
+   visitor gets a fresh namespace on every request and loses their threads.
+3. **`publicHost`** — pass `new URL(request.url).host` into `startRun()`. The package's
+   `/runs` route used to set this and we no longer route it, so it is now the caller's
+   job. `StartRunInput.publicHost` is optional, so omitting it typechecks and deploys —
+   then `resolveBridgeOrigin` has no host to derive and the run fails at the container's
+   first callback, surfacing as "the tanstack MCP server hasn't come up" (really a 404).
+
 ### Host tools and the MCP bridge
 
 Tools passed to `createCloudflareSandboxAgent({ tools })` run **on the host** and are

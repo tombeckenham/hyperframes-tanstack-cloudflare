@@ -1,0 +1,139 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  # Lets a maintainer re-run the image job without pushing an empty commit.
+  workflow_dispatch:
+
+# A newer push to the same branch makes an in-flight run redundant. `main` is
+# excluded so pushes there are never cancelled halfway.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+jobs:
+  # Mirrors the lefthook pre-commit hook, plus the two things the hook cannot
+  # do: run the tests, and prove the app still builds. The hook is a fast local
+  # gate that `--no-verify` can skip; this is the one that actually blocks a
+  # merge.
+  check:
+    name: lint · format · typecheck · test · build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      # --frozen-lockfile: CI must fail on a lockfile that disagrees with
+      # package.json rather than quietly resolving something new. That matters
+      # here because @cloudflare/sandbox is pinned exactly to match the
+      # Dockerfile's base image tag.
+      - name: Install
+        run: bun install --frozen-lockfile
+
+      - name: Lint
+        run: bun run lint
+
+      - name: Format
+        run: bun run format:check
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Test
+        run: bun run test
+
+      - name: Build
+        run: bun run build
+
+      # The route tree is generated and committed. If a route file was added
+      # without regenerating, the committed tree is stale and routing silently
+      # diverges from the filesystem.
+      - name: Route tree is up to date
+        run: |
+          bunx tsr generate
+          if ! git diff --quiet -- src/routeTree.gen.ts; then
+            echo "::error::src/routeTree.gen.ts is stale. Run 'bun run generate-routes' and commit."
+            git diff -- src/routeTree.gen.ts
+            exit 1
+          fi
+
+  # Separate job: it is slow and independent, so it should not delay the fast
+  # feedback above. Worth running — building this image is how the missing
+  # ffprobe and the macOS-binary symlink were caught, neither of which is
+  # visible by reading the Dockerfile.
+  #
+  # The build-time `hyperframes doctor --json` gate means a green job really
+  # does mean node/ffmpeg/ffprobe/chrome all resolve inside the image.
+  image:
+    name: sandbox image builds
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v4
+
+      # linux/amd64 explicitly: the base image is published amd64-only, and
+      # Cloudflare Containers run amd64. Native here, emulated on an arm64 dev
+      # machine.
+      - name: Build sandbox image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: hyperframes-sandbox:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # The image build already asserts this, but re-asserting from outside
+      # catches a layer that built green and then broke at runtime.
+      - name: Toolchain resolves at runtime
+        run: |
+          docker run --rm --entrypoint claude      hyperframes-sandbox:ci --version
+          docker run --rm --entrypoint hyperframes hyperframes-sandbox:ci --version
+          docker run --rm --entrypoint ffmpeg      hyperframes-sandbox:ci -version | head -1
+          docker run --rm --entrypoint ffprobe     hyperframes-sandbox:ci -version | head -1
+
+      - name: Required doctor checks pass
+        run: |
+          docker run --rm --entrypoint hyperframes hyperframes-sandbox:ci doctor --json > doctor.json
+          node -e "
+            const r = require('./doctor.json');
+            const required = ['Node.js', 'FFmpeg', 'FFprobe', 'Chrome'];
+            const failed = required.filter((name) => {
+              const check = r.checks.find((c) => c.name === name);
+              return !check || !check.ok;
+            });
+            if (failed.length > 0) {
+              console.error('FATAL: doctor failed required checks: ' + failed.join(', '));
+              process.exit(1);
+            }
+            console.log('doctor: all required checks pass');
+          "
+
+      # End to end: the composition contract and the bundler are what Phase 3's
+      # publishComposition depends on, so prove they work in the built image
+      # rather than only that the packages installed.
+      - name: Scaffold and bundle a composition
+        run: |
+          docker run --rm --entrypoint sh hyperframes-sandbox:ci -c '
+            set -e
+            cd /tmp
+            hyperframes init ci-demo --non-interactive --example blank >/dev/null
+            node /usr/local/lib/hyperframes/bundle.mjs /tmp/ci-demo > /tmp/out.html
+            bytes=$(wc -c < /tmp/out.html)
+            echo "bundled ${bytes} bytes"
+            test "${bytes}" -gt 1000
+            head -c 15 /tmp/out.html | grep -q "<!DOCTYPE html>"
+          '

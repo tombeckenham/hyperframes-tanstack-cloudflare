@@ -12,11 +12,9 @@
  * requiring a login or any stored state:
  *
  *   sessionId  — 256 bits of randomness, set as an HttpOnly cookie. Opaque: the
- *                server stores nothing and verifies nothing, because there is
- *                nothing to forge. A fabricated value is simply a different
- *                (empty) namespace, which is harmless.
+ *                server stores nothing and verifies nothing about it.
  *   threadKey  — chosen by the client, one per chat thread. Not a secret.
- *   threadId   — SHA-256(sessionId, threadKey).
+ *   threadId   — SHA-256(sessionId \0 threadKey).
  *
  * Two visitors who pick the same `threadKey` still get different `threadId`s,
  * and reaching someone else's thread means guessing their 256-bit session id.
@@ -25,12 +23,42 @@
  * Durable Object name and appears in R2 keys and the run log, so it must not
  * carry the session id in recoverable form.
  *
- * This is scoping, not authentication — it establishes that two browsers are
- * different tenants, not who they are. When real accounts arrive, derive the
+ * SESSION FIXATION — the cookie is unsigned, so it is worth being precise about
+ * what that does and does not cost. An attacker inventing a value FOR THEMSELVES
+ * gains nothing: they get a different, empty namespace. The real vector is
+ * planting a well-formed value in the VICTIM's browser, which would land the
+ * victim's runs in the attacker's namespace — same container, same API key, same
+ * R2 prefixes. Rejecting malformed cookies does not help, because a planted
+ * value is well-formed by construction.
+ *
+ * The defense is the `__Host-` prefix: browsers refuse such a cookie unless it
+ * is `Secure`, `Path=/`, and carries NO `Domain`, which makes it unwritable from
+ * a sibling or parent domain — the usual way a cookie gets planted. So the name
+ * is `__Host-hf_session` over https, falling back to the bare name on http
+ * because `__Host-` requires `Secure` and local dev is plain http.
+ *
+ * Two in-app vectors are already closed by design rather than by luck: previews
+ * are served on `*.trycloudflare.com` (a different site entirely), and `/p/*`
+ * serves LLM-authored HTML under `sandbox allow-scripts`, i.e. an opaque origin
+ * with no `document.cookie` at all.
+ *
+ * This is tenant scoping, not authentication — it establishes that two browsers
+ * are different tenants, not who they are. When real accounts arrive, derive the
  * session id from the authenticated user instead and the rest holds.
  */
 
+/**
+ * Cookie name on https. The `__Host-` prefix is enforced by the browser: it
+ * refuses to store one that is not Secure + Path=/ + Domain-less, which is
+ * exactly what stops a subdomain from planting a session.
+ */
+export const SESSION_COOKIE_SECURE = '__Host-hf_session'
+
+/** Fallback for plain-http local dev, where `__Host-` cannot be used. */
 export const SESSION_COOKIE = 'hf_session'
+
+/** The names we accept, most-preferred first. */
+const SESSION_COOKIE_NAMES = [SESSION_COOKIE_SECURE, SESSION_COOKIE] as const
 
 /** A year. The cookie is the only handle a visitor has on their own threads. */
 const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 365
@@ -52,21 +80,37 @@ export function createSessionId(): string {
 /**
  * Read our session cookie out of a request.
  *
- * Returns `null` for anything that is not exactly the shape we issue, so a
- * malformed or injected value can never become a namespace. Parsing is
- * deliberately strict rather than lenient: this value seeds a container name.
+ * Ignores anything that is not exactly the shape we issue, so a malformed or
+ * injected value can never become a namespace. Parsing is deliberately strict
+ * rather than lenient: this value seeds a container name.
+ *
+ * A bad value is SKIPPED, not treated as "no cookie found" — a header may carry
+ * the same name twice (that is what a Domain- or Path-scoped overwrite looks
+ * like), and bailing on the first match would silently discard a visitor's real
+ * session and orphan every thread they had.
+ *
+ * `__Host-` wins over the bare name when both are present: it is the one a
+ * subdomain cannot have written.
  */
 export function readSessionId(request: Request): string | null {
   const header = request.headers.get('cookie')
   if (header === null) return null
 
+  const found = new Map<string, string>()
+
   for (const part of header.split(';')) {
     const separator = part.indexOf('=')
     if (separator === -1) continue
     const name = part.slice(0, separator).trim()
-    if (name !== SESSION_COOKIE) continue
+    if (!SESSION_COOKIE_NAMES.some((candidate) => candidate === name)) continue
     const value = part.slice(separator + 1).trim()
-    return SESSION_ID_PATTERN.test(value) ? value : null
+    if (!SESSION_ID_PATTERN.test(value)) continue
+    if (!found.has(name)) found.set(name, value)
+  }
+
+  for (const name of SESSION_COOKIE_NAMES) {
+    const value = found.get(name)
+    if (value !== undefined) return value
   }
 
   return null
@@ -88,7 +132,7 @@ export function serialiseSessionCookie(
   { secure }: { secure: boolean },
 ): string {
   const attributes = [
-    `${SESSION_COOKIE}=${sessionId}`,
+    `${secure ? SESSION_COOKIE_SECURE : SESSION_COOKIE}=${sessionId}`,
     'Path=/',
     'HttpOnly',
     'SameSite=Lax',
@@ -102,6 +146,19 @@ export function serialiseSessionCookie(
 export const isSecureRequest = (request: Request): boolean =>
   new URL(request.url).protocol === 'https:'
 
+declare const threadIdBrand: unique symbol
+
+/**
+ * A thread id that provably came from {@link deriveThreadId}.
+ *
+ * Branded on purpose. The invariant "never use a client-supplied threadId" is
+ * the only thing standing between one visitor and another's container, and a
+ * comment cannot enforce it. Because a raw `string` is not assignable to
+ * `ThreadId`, a call site that reaches for `body.threadId` fails to compile
+ * instead of shipping.
+ */
+export type ThreadId = string & { readonly [threadIdBrand]: true }
+
 /**
  * Derive the real thread id. NEVER use a client-supplied value directly as a
  * thread id — that is the whole point of this module.
@@ -109,13 +166,15 @@ export const isSecureRequest = (request: Request): boolean =>
 export async function deriveThreadId(
   sessionId: string,
   threadKey: string,
-): Promise<string> {
+): Promise<ThreadId> {
   // A NUL separator keeps the encoding unambiguous: without it ("ab","c") and
   // ("a","bc") would hash identically. Written as the ESCAPE \0, never a literal
   // NUL byte -- a raw NUL makes the file binary to grep and invisible in editors.
   const encoded = new TextEncoder().encode(`${sessionId}\0${threadKey}`)
   const digest = await crypto.subtle.digest('SHA-256', encoded)
-  return toHex(digest)
+  // The sole place the brand is applied: everything else must obtain a ThreadId
+  // by calling this function.
+  return toHex(digest) as ThreadId
 }
 
 /**
