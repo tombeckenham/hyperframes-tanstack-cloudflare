@@ -96,6 +96,10 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  /* base-nova's resizable.json uses `ring-offset-background`, but no such token
+     ships in shadcn/tailwind.css (an upstream v4 leftover) — define it or the
+     handle's focus ring offset renders as an invalid colour. */
+  --color-ring-offset-background: var(--background);
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
   --color-chart-3: var(--chart-3);

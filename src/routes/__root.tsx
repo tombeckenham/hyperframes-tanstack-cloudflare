@@ -9,6 +9,7 @@ import { TanStackDevtools } from '@tanstack/react-devtools'
 import TanStackQueryDevtools from '../integrations/tanstack-query/devtools'
 
 import appCss from '../styles.css?url'
+import { THEME_INIT_SCRIPT } from '../lib/theme'
 
 import type { QueryClient } from '@tanstack/react-query'
 
@@ -27,13 +28,19 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
         content: 'width=device-width, initial-scale=1',
       },
       {
-        title: 'TanStack Start Starter',
+        title: 'HyperFrames Studio',
       },
     ],
     links: [
       {
         rel: 'stylesheet',
         href: appCss,
+      },
+    ],
+    // Applies `.dark` before first paint — see src/lib/theme.ts.
+    scripts: [
+      {
+        children: THEME_INIT_SCRIPT,
       },
     ],
   }),
@@ -54,7 +61,9 @@ const devtoolsPlugins = [
 
 function RootDocument({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    // suppressHydrationWarning: the theme boot script adds `.dark` to <html>
+    // before hydration, so the server-rendered class attribute never matches.
+    <html lang="en" suppressHydrationWarning>
       <head>
         <HeadContent />
       </head>
