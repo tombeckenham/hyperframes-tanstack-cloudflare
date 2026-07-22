@@ -35,10 +35,25 @@ test('end past EOF clamps to the last byte', () => {
 })
 
 test('unsatisfiable ranges are rejected', () => {
-  expect(parseRange('bytes=1000-', SIZE)).toBe('unsatisfiable') // start == size
-  expect(parseRange('bytes=1500-1600', SIZE)).toBe('unsatisfiable') // past EOF
-  expect(parseRange('bytes=500-100', SIZE)).toBe('unsatisfiable') // end < start
-  expect(parseRange('bytes=-0', SIZE)).toBe('unsatisfiable') // zero-length
+  // start == size
+  expect(parseRange('bytes=1000-', SIZE)).toBe('unsatisfiable')
+  // wholly past EOF
+  expect(parseRange('bytes=1500-1600', SIZE)).toBe('unsatisfiable')
+  // zero-length suffix
+  expect(parseRange('bytes=-0', SIZE)).toBe('unsatisfiable')
+})
+
+test('nothing is satisfiable against a zero-byte object', () => {
+  // Would otherwise compute `content-range: bytes 0--1/0`.
+  expect(parseRange('bytes=-100', 0)).toBe('unsatisfiable')
+  expect(parseRange('bytes=0-', 0)).toBe('unsatisfiable')
+})
+
+test('an inverted range is invalid, not unsatisfiable', () => {
+  // RFC 9110 §14.1.2: last-byte-pos < first-byte-pos is an INVALID
+  // range-spec, and an invalid Range header must be ignored (200 with the
+  // full body) rather than answered with 416.
+  expect(parseRange('bytes=500-100', SIZE)).toBeNull()
 })
 
 test('malformed and multi-range headers fall back to the whole object', () => {

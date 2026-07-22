@@ -14,35 +14,20 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { timingSafeBearerEqualWeb } from '@tanstack/ai-sandbox-cloudflare/agent'
 import { env } from 'cloudflare:workers'
-import { uploadTicketKey } from '../tools/publish'
-import type { UploadTicket } from '../tools/publish'
+import { uploadTicketKey, uploadTicketSchema } from '../tools/publish'
+
+/**
+ * Ceiling on a single upload. A looping agent should not be able to push
+ * unbounded bytes into R2 through one ticket, and R2's own single-object limit
+ * is far higher than any composition render needs.
+ */
+const MAX_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024
 
 const json = (body: unknown, status: number): Response =>
   new Response(JSON.stringify(body), {
     status,
     headers: { 'content-type': 'application/json' },
   })
-
-function parseTicket(value: unknown): UploadTicket | null {
-  if (typeof value !== 'object' || value === null) return null
-  const t = value as Record<string, unknown>
-  if (
-    typeof t['token'] !== 'string' ||
-    typeof t['threadId'] !== 'string' ||
-    typeof t['expiresAt'] !== 'number' ||
-    typeof t['targetKey'] !== 'string' ||
-    typeof t['contentType'] !== 'string'
-  ) {
-    return null
-  }
-  return {
-    token: t['token'],
-    threadId: t['threadId'],
-    expiresAt: t['expiresAt'],
-    targetKey: t['targetKey'],
-    contentType: t['contentType'],
-  }
-}
 
 export const Route = createFileRoute('/api/uploads/$runId/$name')({
   server: {
@@ -60,11 +45,12 @@ export const Route = createFileRoute('/api/uploads/$runId/$name')({
               return json({ error: 'invalid or expired upload ticket' }, 403)
             }
 
-            const ticket = parseTicket(await stored.json())
-            if (!ticket) {
+            const parsed = uploadTicketSchema.safeParse(await stored.json())
+            if (!parsed.success) {
               await env.RENDERS.delete(ticketKey)
               return json({ error: 'malformed upload ticket' }, 500)
             }
+            const ticket = parsed.data
 
             if (Date.now() > ticket.expiresAt) {
               await env.RENDERS.delete(ticketKey)
@@ -83,6 +69,21 @@ export const Route = createFileRoute('/api/uploads/$runId/$name')({
 
             if (!request.body) {
               return json({ error: 'request body is required' }, 400)
+            }
+
+            // curl -T sets Content-Length from stat, so this is present for the
+            // intended caller. Requiring it also means R2 is never handed a
+            // stream of unknown length, which fails opaquely.
+            const declared = request.headers.get('content-length')
+            if (declared === null) {
+              return json({ error: 'content-length is required' }, 411)
+            }
+            const size = Number(declared)
+            if (!Number.isFinite(size) || size <= 0) {
+              return json({ error: 'invalid content-length' }, 400)
+            }
+            if (size > MAX_UPLOAD_BYTES) {
+              return json({ error: 'upload too large' }, 413)
             }
 
             // Burn the ticket BEFORE the upload. A retry then needs a fresh

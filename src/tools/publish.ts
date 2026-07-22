@@ -10,6 +10,11 @@ import { toolDefinition } from '@tanstack/ai'
 import { getSandbox } from '@cloudflare/sandbox'
 import { resolveBridgeOrigin } from '@tanstack/ai-sandbox-cloudflare/agent'
 import { z } from 'zod'
+import {
+  PREVIEW_PREFIX,
+  RENDER_PREFIX,
+  TICKET_PREFIX,
+} from '../lib/artifact-keys'
 import type { Sandbox } from '@cloudflare/sandbox'
 import type { StartRunInput } from '@tanstack/ai-sandbox-cloudflare/agent'
 
@@ -30,24 +35,30 @@ export interface PublishToolEnv {
 }
 
 /**
- * A minted upload ticket, stored in R2 and consumed by the upload route.
+ * A minted upload ticket, consumed by the upload route.
  *
  * Stateful by choice: an HMAC would be stateless but needs a signing secret
  * this app does not otherwise have, and adding one is deploy burden for no
  * gain. Storing the ticket lets it be single-use, which a bare signature is not.
+ *
+ * Stored in the same bucket as the artifacts, so the public routes MUST refuse
+ * to serve this prefix — see src/lib/artifact-keys.ts. The body is a live
+ * bearer token.
  */
-export interface UploadTicket {
-  token: string
-  threadId: string
+export const uploadTicketSchema = z.object({
+  token: z.string().min(1),
+  threadId: z.string().min(1),
   /** Epoch ms. */
-  expiresAt: number
+  expiresAt: z.number(),
   /** The R2 key the upload lands on once validated. */
-  targetKey: string
-  contentType: string
-}
+  targetKey: z.string().min(1),
+  contentType: z.string().min(1),
+})
+
+export type UploadTicket = z.infer<typeof uploadTicketSchema>
 
 export const uploadTicketKey = (runId: string, name: string): string =>
-  `tickets/${runId}/${name}`
+  `${TICKET_PREFIX}${runId}/${name}`
 
 /** Slugs become URL path segments and R2 keys, so keep them boring. */
 const slugSchema = z
@@ -82,10 +93,10 @@ const projectDirSchema = z
   })
 
 export const previewKey = (threadId: string, slug: string): string =>
-  `previews/${threadId}/${slug}.html`
+  `${PREVIEW_PREFIX}${threadId}/${slug}.html`
 
 export const renderKey = (threadId: string, name: string): string =>
-  `renders/${threadId}/${name}`
+  `${RENDER_PREFIX}${threadId}/${name}`
 
 function randomToken(): string {
   const bytes = new Uint8Array(32)
@@ -154,7 +165,9 @@ export function publishCompositionTool(
     return {
       ok: true as const,
       url: `/p/${key}`,
-      bytes: html.length,
+      // Encoded byte length, not `html.length` — that counts UTF-16 code units
+      // and under-reports any composition with non-ASCII text.
+      bytes: new TextEncoder().encode(html).byteLength,
       note: 'Share this URL with the user. It is served from durable storage and survives the sandbox.',
     }
   })
@@ -207,9 +220,12 @@ export function publishRenderTool(input: StartRunInput, env: PublishToolEnv) {
     const origin = resolveBridgeOrigin(env, input)
     const uploadUrl = `${origin}/api/uploads/${input.runId}/${name}`
 
+    // `-T` streams the file and takes Content-Length from stat. `--data-binary
+    // @file` would read the whole MP4 into memory first, which is exactly what
+    // this upload lane exists to avoid. `-T` also implies PUT, so no `-X`.
     return {
       ok: true as const,
-      runCommand: `curl -fsS --fail-with-body -X PUT '${uploadUrl}' -H 'authorization: Bearer ${token}' -H 'content-type: video/mp4' --data-binary @'${path}'`,
+      runCommand: `curl --fail-with-body -sS -T '${path}' '${uploadUrl}' -H 'authorization: Bearer ${token}' -H 'content-type: video/mp4'`,
       url: `/r/${targetKey}`,
       expiresInMinutes: UPLOAD_TTL_MS / 60000,
       note: 'Run runCommand with the Bash tool. The ticket is single-use; call publishRender again if you need to re-upload.',

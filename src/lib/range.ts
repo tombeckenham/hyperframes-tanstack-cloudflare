@@ -36,6 +36,10 @@ export function parseRange(
 
   if (!hasStart && !hasEnd) return null
 
+  // Nothing is satisfiable against a zero-byte object, and computing a suffix
+  // against it would produce `bytes 0--1/0`.
+  if (size === 0) return 'unsatisfiable'
+
   // `bytes=-N` — the final N bytes.
   if (!hasStart) {
     const suffix = Number(rawEnd)
@@ -45,12 +49,18 @@ export function parseRange(
   }
 
   const start = Number(rawStart)
-  if (!Number.isFinite(start) || start >= size) return 'unsatisfiable'
+  if (!Number.isFinite(start)) return null
+  if (start >= size) return 'unsatisfiable'
 
   // An absent or past-EOF end clamps to the last byte, which is what
   // `bytes=0-` (Safari's opening probe) relies on.
   const end = hasEnd ? Math.min(Number(rawEnd), size - 1) : size - 1
-  if (!Number.isFinite(end) || end < start) return 'unsatisfiable'
+  if (!Number.isFinite(end)) return null
+
+  // RFC 9110 §14.1.2: last-byte-pos < first-byte-pos is an INVALID range-spec,
+  // not an unsatisfiable one — an invalid Range header must be ignored (200
+  // with the full body), where unsatisfiable means 416.
+  if (end < start) return null
 
   return { offset: start, length: end - start + 1 }
 }

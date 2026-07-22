@@ -115,20 +115,25 @@ Add --strict to make warnings fail too.
 
 Start the studio:
 
-    npx hyperframes preview --port 3002 --no-open
+    npx hyperframes preview --port 3002 --no-open --background
+    npx hyperframes preview --status
 
+  - --background is REQUIRED here. Without it the server is tied to the
+    command, and it dies the moment your shell call returns — leaving nothing
+    for the tunnel to reach.
+  - --status prints the running background preview and its ACTUAL port. Use it;
+    the server SCANS FORWARD from --port for a free one, so it may not be on
+    3002. (You can also probe /__hyperframes_config on a candidate port.)
   - There is NO --host flag. The server binds 127.0.0.1 unless
     HYPERFRAMES_PREVIEW_HOST=0.0.0.0, which this image already sets — do not
     unset it or nothing outside the container can reach the preview.
   - NEVER bind port 3000: it is the sandbox control plane.
   - --no-open matters; --open defaults to true and tries to spawn a browser.
-  - The server SCANS FORWARD from --port for a free port, so it may not land on
-    3002. Confirm the real port by probing /__hyperframes_config before
-    exposing it.
+  - Manage it with --status / --stop / --list / --kill-all.
 
-Then call the exposePreview tool with the port you confirmed, e.g.
-{ "port": 3002 }. That opens a public tunnel and returns the URL to show the
-user. Starting the tunnel is a host-side call — you cannot do it from bash.
+Then call the exposePreview tool with the port you confirmed from --status,
+e.g. { "port": 3002 }. That opens a public tunnel and returns the URL to show
+the user. Starting the tunnel is a host-side call — you cannot do it from bash.
 
 When sub-compositions are mounted, snapshot the midpoints and actually look at
 them:
