@@ -9,9 +9,10 @@
  * Routing order is load-bearing:
  *   1. `proxyToSandbox` — sandbox preview-port traffic, routed by HOSTNAME, so
  *      it gets first refusal before any path-based routing.
- *   2. the agent Worker — `/runs`, `/_bridge`, `/tool-exec`. The container
- *      calls back on the root-level `/_bridge` and `/tool-exec` paths, so those
- *      roots are RESERVED for the agent; app routes must go elsewhere.
+ *   2. the agent Worker — `/_bridge` ONLY. The container calls back on that
+ *      root, so it is RESERVED for the agent; app routes must go elsewhere.
+ *      `/runs` and `/tool-exec` are deliberately NOT routed — see AGENT_PATHS
+ *      below before adding either back.
  *   3. TanStack Start — the UI and its `/api/*` server routes.
  *
  * @see https://developers.cloudflare.com/workers/framework-guides/web-apps/tanstack-start/
@@ -26,8 +27,34 @@ import type { AppEnv } from './agent'
 export const RunCoordinator = agent.Coordinator
 export const Sandbox = agent.Sandbox
 
-/** Root paths owned by the agent; everything else falls through to Start. */
-const AGENT_PATHS = ['/runs', '/_bridge', '/tool-exec']
+/**
+ * Root paths owned by the agent; everything else falls through to Start.
+ *
+ * `/_bridge` is the ONLY one exposed, because it is the only one that has to
+ * be reachable over the public internet: the sandbox container calls back to it
+ * for the agent's MCP tool calls. It is gated per run by a ~288-bit bearer
+ * token, constant-time compared, held in memory only while the run is in flight
+ * (`ChatSandboxCoordinator.serveBridge`), so a closed run 404s.
+ *
+ * Deliberately NOT routed:
+ *
+ *  • `/runs` — the package's HTTP trigger. `parseCreateRunBody` takes
+ *    `threadId` straight from the body and `resolveCoordinator` does
+ *    `idFromName(threadId)`, with no authentication at all. Exposing it let
+ *    anyone start a run in any thread — and the container a thread is pinned to
+ *    holds this app's ANTHROPIC_API_KEY. Nothing needs it over HTTP: the
+ *    browser goes through `/api/run`, which addresses the coordinator over the
+ *    RUN_COORDINATOR binding (required regardless — a Worker fetching its own
+ *    hostname is a same-zone self-subrequest, Cloudflare error 1042).
+ *
+ *  • `/tool-exec` — only ever used by `ContainerSandboxCoordinator`, i.e. the
+ *    `colocated` execution mode. This app runs `do-drives`, so it is dead
+ *    surface.
+ *
+ * Removing them beats authenticating them: an endpoint that is not routed
+ * cannot be misconfigured later.
+ */
+const AGENT_PATHS = ['/_bridge']
 
 const ownedByAgent = (pathname: string): boolean =>
   AGENT_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`))

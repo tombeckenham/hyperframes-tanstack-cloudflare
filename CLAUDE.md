@@ -27,6 +27,7 @@ bun run dev          # vite dev on :3001 — Worker + DOs + container in workerd
 bun run build
 bun run deploy       # bun run build && wrangler deploy
 bun run typecheck    # tsc --noEmit
+bun run test         # bun test
 bun run lint         # oxlint
 bun run lint:fix     # oxlint --fix
 bun run format       # oxfmt
@@ -36,6 +37,16 @@ bun run cf-typegen   # wrangler types → worker-configuration.d.ts (run after e
 
 `lefthook` runs lint + format:check + typecheck on `pre-commit` (see `lefthook.yml`).
 Install hooks with `bun run prepare` (or `bunx lefthook install`) after a fresh clone.
+CI (`.github/workflows/ci.yml`) runs the same three plus `test` and `build`, and
+separately builds the sandbox image — the hook is skippable with `--no-verify`, CI is not.
+
+**`src/routeTree.gen.ts` is written by the `tanstackStart()` Vite plugin**, so regenerate
+it with `bun run dev` or `bun run build` and commit the result. Do **not** use the
+standalone `tsr generate` CLI: it emits a tree WITHOUT the trailing
+`declare module '@tanstack/react-start'` Register block (`ssr`, `router`), and the
+downgraded file still typechecks — so nothing catches the loss. The scaffold's
+`generate-routes` script was removed for that reason. CI asserts the committed tree
+matches what the build produces.
 
 Adding UI:
 
@@ -63,11 +74,17 @@ Browser ──POST /api/run──▶ Start server route ──DO RPC──▶ Ru
 
 1. **Worker (`src/server.ts`)** — custom Cloudflare entry. Re-exports the DO classes so
    wrangler's `class_name` bindings resolve, and routes in strict order:
-   `proxyToSandbox` (hostname-routed preview traffic) → agent paths
-   (`/runs`, `/_bridge`, `/tool-exec`) → TanStack Start SSR + `/api/*`.
-   Those three root paths are **reserved for the agent** — do not add app routes there.
-2. **`RunCoordinator` Durable Object** — owns a run. `POST /runs` returns `202` after
-   registering the run; the DO drives `chat()` under `ctx.waitUntil` plus a watchdog
+   `proxyToSandbox` (hostname-routed preview traffic) → **`/_bridge`** → TanStack Start
+   SSR + `/api/*`. `/_bridge` is **reserved for the agent** — do not add app routes there.
+
+   `/runs` and `/tool-exec` are **deliberately not routed**. The package's `/runs`
+   trigger has no authentication — it takes `threadId` straight from the body and does
+   `idFromName(threadId)` — so exposing it let anyone start a run in any thread, and a
+   thread's container holds `ANTHROPIC_API_KEY`. Nothing needs it over HTTP (the browser
+   goes through `/api/run` over the binding). `/tool-exec` is `colocated`-mode only, and
+   this app runs `do-drives`. Removing them beats authenticating them.
+2. **`RunCoordinator` Durable Object** — owns a run. `startRun()` over the binding
+   registers it; the DO drives `chat()` under `ctx.waitUntil` plus a watchdog
    alarm, appends every `StreamChunk` to a `seq`-indexed durable log, and serves
    resumable WebSocket tails. A Worker invocation never holds a multi-minute agent loop.
 3. **Sandbox container** — the `claude` CLI *and* the HyperFrames toolchain (Node 22,
@@ -78,9 +95,45 @@ Browser ──POST /api/run──▶ Start server route ──DO RPC──▶ Ru
 
 `useChat` speaks "POST a body, read SSE back"; the coordinator speaks
 "POST-then-WebSocket". `src/routes/api.run.ts` bridges the two. It addresses the
-coordinator **over the `RUN_COORDINATOR` binding**, not via `fetch('/runs')` — a Worker
-fetching its own hostname is a same-zone self-subrequest, which Cloudflare blocks in
-production (error 1042 → 404) even though it resolves fine in local `workerd`.
+coordinator **over the `RUN_COORDINATOR` binding**, not via `fetch('/runs')` — for two
+independent reasons. A Worker fetching its own hostname is a same-zone self-subrequest,
+which Cloudflare blocks in production (error 1042 → 404) even though it resolves fine in
+local `workerd`; and `/runs` is no longer routed publicly at all (see above).
+
+### Thread identity — never trust a client-supplied `threadId`
+
+A run's container is pinned to its `threadId` and every container carries
+`ANTHROPIC_API_KEY`, so whoever can name a `threadId` can reach that container. `/api/run`
+must therefore derive it via `src/lib/session.ts`:
+
+```
+sessionId  256-bit random, HttpOnly cookie (opaque — nothing stored, nothing verified)
+threadKey  client-chosen, one per chat thread, not a secret
+threadId   SHA-256(sessionId \0 threadKey)
+```
+
+Two visitors picking the same `threadKey` get different threads, and reaching someone
+else's means guessing 256 bits. The hash matters: `threadId` becomes a container DO name
+and appears in R2 keys and the run log, so it must not carry the session id in recoverable
+form. This is tenant scoping, not authentication — when real accounts arrive, seed the
+session id from the authenticated user and the rest holds.
+
+`deriveThreadId` returns a **branded `ThreadId`**, so a raw `string` from a request body
+will not compile at the `startRun` call site. That is deliberate: a comment cannot enforce
+this invariant, the type can.
+
+### The `/api/run` contract
+
+Three things it MUST do, none of which the type system can supply for you:
+
+1. `threadId` — from `deriveThreadId(sessionId, threadKey)`. Never from the body.
+2. `setCookie` — attach `resolveSession()`'s value to the response when non-null, or the
+   visitor gets a fresh namespace on every request and loses their threads.
+3. **`publicHost`** — pass `new URL(request.url).host` into `startRun()`. The package's
+   `/runs` route used to set this and we no longer route it, so it is now the caller's
+   job. `StartRunInput.publicHost` is optional, so omitting it typechecks and deploys —
+   then `resolveBridgeOrigin` has no host to derive and the run fails at the container's
+   first callback, surfacing as "the tanstack MCP server hasn't come up" (really a 404).
 
 ### Host tools and the MCP bridge
 
