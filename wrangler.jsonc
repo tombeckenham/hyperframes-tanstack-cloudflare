@@ -1,7 +1,80 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "hyperframes-studio",
+  // Custom server entry: TanStack Start SSR + the agent's DOs/container in one
+  // Worker. The @cloudflare/vite-plugin builds this entry and wires the client
+  // assets automatically, so no `assets` block belongs here.
+  "main": "src/server.ts",
   "compatibility_date": "2026-07-22",
+  // node:crypto / node:buffer are used transitively by the TanStack AI packages
+  // and the MCP SDK. The DO/Worker code itself uses Web Crypto for the
+  // constant-time bearer check on /_bridge.
   "compatibility_flags": ["nodejs_compat"],
-  "main": "@tanstack/react-start/server-entry",
+
+  // The container image the @cloudflare/sandbox Sandbox DO runs. Chromium +
+  // ffmpeg + chrome-headless-shell make this a large image, so it is baked at
+  // build time and never installed at render time (PLAN risk 4).
+  "containers": [
+    {
+      "class_name": "Sandbox",
+      "image": "./Dockerfile",
+      // Renders are CPU- and memory-hungry: Chromium plus ffmpeg in one box.
+      "instance_type": "standard-4",
+      // A few warm instances so concurrent chat threads each get a sandbox.
+      "max_instances": 5,
+    },
+  ],
+
+  "durable_objects": {
+    "bindings": [
+      // Owns each run: drives chat(), the durable run-log, the resumable
+      // WebSocket tails, and the /_bridge MCP endpoint.
+      { "name": "RUN_COORDINATOR", "class_name": "RunCoordinator" },
+      // The @cloudflare/sandbox container host DO. The binding name must
+      // literally be `Sandbox` — the package keys on that exact property.
+      { "name": "Sandbox", "class_name": "Sandbox" },
+    ],
+  },
+
+  "migrations": [
+    {
+      "tag": "v1",
+      // Both DO classes use the SQLite-backed storage backend: required by the
+      // sandbox SDK, and what the durable run-log persists run events to.
+      "new_sqlite_classes": ["RunCoordinator", "Sandbox"],
+    },
+  ],
+
+  // Rendered MP4s and bundled single-file composition HTML. The container disk
+  // is ephemeral (`durableFilesystem: false`), so anything that must outlive a
+  // cold start is persisted here by the host.
+  "r2_buckets": [
+    { "binding": "RENDERS", "bucket_name": "hyperframes-studio-renders" },
+  ],
+
+  "vars": {
+    // Container-control transport for the Sandbox DO. `rpc` is REQUIRED for
+    // `sandbox.tunnels` (the quick-tunnel preview URLs `exposePreview`
+    // returns); on the default `http` transport it throws. Every getSandbox()
+    // call for an id must pass the same transport — src/sandbox-provider.ts
+    // does.
+    "SANDBOX_TRANSPORT": "rpc",
+  },
+
+  // Two host surfaces, both request-derived when unset:
+  //
+  // • PUBLIC_HOSTNAME — the CONTAINER→Worker bridge host (/_bridge,
+  //   /tool-exec). Unset → derived from the trigger request, which is correct
+  //   both locally (host.docker.internal) and on a *.workers.dev deploy. It is
+  //   an OVERRIDE ONLY; a wrong value surfaces as "the tanstack MCP server
+  //   hasn't come up" (a 404).
+  //
+  // • PREVIEW_HOSTNAME — not needed. Browser previews use a Cloudflare quick
+  //   tunnel (*.trycloudflare.com), not exposePort, so no wildcard DNS is
+  //   required.
+  //
+  // The harness key is a SECRET, not a var:
+  //   wrangler secret put ANTHROPIC_API_KEY
+
+  "observability": { "enabled": true },
 }

@@ -1,0 +1,18 @@
+# Copy to `.dev.vars` (gitignored) for local development.
+#
+# The key the in-sandbox `claude` CLI authenticates with. It is injected into
+# the container as a workspace secret, never exposed to the browser.
+# For a deployed Worker use: wrangler secret put ANTHROPIC_API_KEY
+ANTHROPIC_API_KEY=
+
+# PUBLIC_HOSTNAME — OVERRIDE ONLY, normally leave unset.
+# The host the CONTAINER uses to reach the Worker's tool bridge (/_bridge).
+# Unset is correct both locally (host.docker.internal) and on a deploy, where
+# it is derived from the trigger request. A wrong value shows up as
+# "the tanstack MCP server hasn't come up" — which is really a 404.
+# PUBLIC_HOSTNAME=
+
+# PREVIEW_HOSTNAME — not used by this app. Browser previews go through a
+# Cloudflare quick tunnel (*.trycloudflare.com), not exposePort, so no wildcard
+# DNS is needed. Only relevant if you switch to the exposePort-fronted path.
+# PREVIEW_HOSTNAME=
