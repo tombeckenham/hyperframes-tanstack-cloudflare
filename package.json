@@ -22,10 +22,14 @@
   "dependencies": {
     "@base-ui/react": "^1.6.0",
     "@cloudflare/sandbox": "0.12.4",
+    "@hyperframes/player": "^0.7.68",
+    "@shadcn/react": "^0.2.1",
     "@tailwindcss/vite": "^4.1.18",
     "@tanstack/ai": "^0.42.0",
     "@tanstack/ai-claude-code": "^0.2.3",
+    "@tanstack/ai-client": "^0.22.1",
     "@tanstack/ai-react": "^0.18.1",
+    "@tanstack/ai-react-ui": "^0.8.15",
     "@tanstack/ai-sandbox": "^0.2.4",
     "@tanstack/ai-sandbox-cloudflare": "^0.2.4",
     "@tanstack/ai-sandbox-local-process": "^0.2.0",
@@ -43,6 +47,7 @@
     "lucide-react": "^1.25.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
+    "react-resizable-panels": "^4.12.2",
     "tailwind-merge": "^3.6.0",
     "tailwindcss": "^4.1.18",
     "zod": "^4.4.3"

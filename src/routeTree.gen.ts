@@ -10,6 +10,8 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ApiArtifactsRouteImport } from './routes/api.artifacts'
+import { Route as ApiRunRouteImport } from './routes/api.run'
 import { Route as PSplatRouteImport } from './routes/p.$'
 import { Route as RSplatRouteImport } from './routes/r.$'
 import { Route as ApiUploadsRunIdNameRouteImport } from './routes/api.uploads.$runId.$name'
@@ -17,6 +19,16 @@ import { Route as ApiUploadsRunIdNameRouteImport } from './routes/api.uploads.$r
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiArtifactsRoute = ApiArtifactsRouteImport.update({
+  id: '/api/artifacts',
+  path: '/api/artifacts',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiRunRoute = ApiRunRouteImport.update({
+  id: '/api/run',
+  path: '/api/run',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PSplatRoute = PSplatRouteImport.update({
@@ -37,12 +49,16 @@ const ApiUploadsRunIdNameRoute = ApiUploadsRunIdNameRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/api/artifacts': typeof ApiArtifactsRoute
+  '/api/run': typeof ApiRunRoute
   '/p/$': typeof PSplatRoute
   '/r/$': typeof RSplatRoute
   '/api/uploads/$runId/$name': typeof ApiUploadsRunIdNameRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/api/artifacts': typeof ApiArtifactsRoute
+  '/api/run': typeof ApiRunRoute
   '/p/$': typeof PSplatRoute
   '/r/$': typeof RSplatRoute
   '/api/uploads/$runId/$name': typeof ApiUploadsRunIdNameRoute
@@ -50,20 +66,43 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/api/artifacts': typeof ApiArtifactsRoute
+  '/api/run': typeof ApiRunRoute
   '/p/$': typeof PSplatRoute
   '/r/$': typeof RSplatRoute
   '/api/uploads/$runId/$name': typeof ApiUploadsRunIdNameRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/p/$' | '/r/$' | '/api/uploads/$runId/$name'
+  fullPaths:
+    | '/'
+    | '/api/artifacts'
+    | '/api/run'
+    | '/p/$'
+    | '/r/$'
+    | '/api/uploads/$runId/$name'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/p/$' | '/r/$' | '/api/uploads/$runId/$name'
-  id: '__root__' | '/' | '/p/$' | '/r/$' | '/api/uploads/$runId/$name'
+  to:
+    | '/'
+    | '/api/artifacts'
+    | '/api/run'
+    | '/p/$'
+    | '/r/$'
+    | '/api/uploads/$runId/$name'
+  id:
+    | '__root__'
+    | '/'
+    | '/api/artifacts'
+    | '/api/run'
+    | '/p/$'
+    | '/r/$'
+    | '/api/uploads/$runId/$name'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ApiArtifactsRoute: typeof ApiArtifactsRoute
+  ApiRunRoute: typeof ApiRunRoute
   PSplatRoute: typeof PSplatRoute
   RSplatRoute: typeof RSplatRoute
   ApiUploadsRunIdNameRoute: typeof ApiUploadsRunIdNameRoute
@@ -76,6 +115,20 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/artifacts': {
+      id: '/api/artifacts'
+      path: '/api/artifacts'
+      fullPath: '/api/artifacts'
+      preLoaderRoute: typeof ApiArtifactsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/run': {
+      id: '/api/run'
+      path: '/api/run'
+      fullPath: '/api/run'
+      preLoaderRoute: typeof ApiRunRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/p/$': {
@@ -104,6 +157,8 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ApiArtifactsRoute: ApiArtifactsRoute,
+  ApiRunRoute: ApiRunRoute,
   PSplatRoute: PSplatRoute,
   RSplatRoute: RSplatRoute,
   ApiUploadsRunIdNameRoute: ApiUploadsRunIdNameRoute,
