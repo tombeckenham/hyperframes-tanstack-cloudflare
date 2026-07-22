@@ -1,0 +1,25 @@
+# Pre-commit gate: oxlint -> oxfmt --check -> tsc.
+#
+# Install with `bun run prepare` (or `bunx lefthook install`) after a fresh
+# clone — lefthook does not wire the git hooks on `bun install` alone.
+pre-commit:
+  parallel: true
+  jobs:
+    - name: lint
+      glob: '*.{ts,tsx,mts,cts,js,jsx,mjs,cjs}'
+      # --no-error-on-unmatched-pattern: `glob` decides whether the job runs,
+      # but .oxlintrc.json ignorePatterns then filters the paths. Without the
+      # flag, staging only ignored files — any `shadcn add` component, a
+      # regenerated worker-configuration.d.ts, or routeTree.gen.ts — leaves
+      # oxlint with nothing to lint and it exits 1, blocking a valid commit.
+      run: bunx oxlint --no-error-on-unmatched-pattern {staged_files}
+
+    - name: format
+      # Formatting covers more than the lint globs (css, jsonc), so let oxfmt
+      # see every staged file and filter through .oxfmtrc.json ignorePatterns.
+      run: bunx oxfmt --check --no-error-on-unmatched-pattern {staged_files}
+
+    - name: typecheck
+      # Whole-project: TypeScript has no useful staged-file mode, because a
+      # change in one file can break the types of a file that is not staged.
+      run: bun run typecheck

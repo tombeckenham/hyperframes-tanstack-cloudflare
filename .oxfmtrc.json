@@ -1,0 +1,22 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "singleQuote": true,
+  "semi": false,
+  "printWidth": 80,
+  "trailingComma": "all",
+  "sortPackageJson": false,
+  "ignorePatterns": [
+    "src/routeTree.gen.ts",
+    "worker-configuration.d.ts",
+    "src/components/ui/**",
+    ".wrangler/**",
+    "dist/**",
+    ".cta.json",
+
+    // oxfmt formats Markdown too. Left on, it reflows the hand-wrapped prose
+    // and tables in PLAN.md / CLAUDE.md / AGENTS.md — churn in the documents
+    // that are the spec for this work. Deviation from PLAN.md, which lists no
+    // oxfmt ignores; revert this line to format Markdown as well.
+    "**/*.md"
+  ]
+}
