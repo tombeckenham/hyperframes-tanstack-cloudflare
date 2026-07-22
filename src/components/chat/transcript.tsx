@@ -45,7 +45,9 @@ function AssistantTurn({ message }: { message: UIMessage }) {
     <Message align="start">
       <MessageContent>
         {message.parts.map((part, index) => (
-          // Parts carry no id; the stream only appends, so position IS identity.
+          // The part union has no COMMON id field (tool-call parts have one,
+          // text/thinking don't), and the stream only appends — so position
+          // is the only identity available.
           // oxlint-disable-next-line react/no-array-index-key
           <AssistantPartView key={index} part={part} results={results} />
         ))}
@@ -69,9 +71,16 @@ function EmptyState() {
 export function Transcript({
   messages,
   isLoading,
+  error,
 }: {
   messages: Array<UIMessage>
   isLoading: boolean
+  /**
+   * `useChat().error` — the ONLY surface a failed run has. The client never
+   * adds an error part to the transcript (RUN_ERROR chunks land here instead),
+   * so a page that drops this value shows a run that just… stops.
+   */
+  error: Error | undefined
 }) {
   return (
     <MessageScrollerProvider autoScroll defaultScrollPosition="end">
@@ -101,6 +110,15 @@ export function Transcript({
                     agent working…
                   </MarkerContent>
                 </Marker>
+              </MessageScrollerItem>
+            ) : null}
+            {error !== undefined ? (
+              <MessageScrollerItem>
+                <Bubble variant="destructive">
+                  <BubbleContent className="whitespace-pre-wrap">
+                    Run failed: {error.message}
+                  </BubbleContent>
+                </Bubble>
               </MessageScrollerItem>
             ) : null}
           </MessageScrollerContent>

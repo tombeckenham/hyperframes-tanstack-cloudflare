@@ -17,8 +17,12 @@ export type Theme = 'light' | 'dark'
 const STORAGE_KEY = 'hf-theme'
 
 /**
- * Pre-hydration boot script. Kept in perfect agreement with {@link setTheme}:
- * same storage key, same fallback to `prefers-color-scheme`.
+ * Pre-hydration boot script. Shares the storage key with {@link setTheme} by
+ * interpolation, and falls back to `prefers-color-scheme` the same way — with
+ * one deliberate divergence: a tampered/garbage stored value reads as "not
+ * dark" here, while `initialTheme` validates and falls back to the OS
+ * preference. Reachable only by hand-editing localStorage; not worth the
+ * script bytes to reconcile.
  */
 export const THEME_INIT_SCRIPT = `(function(){try{var t=localStorage.getItem(${JSON.stringify(
   STORAGE_KEY,

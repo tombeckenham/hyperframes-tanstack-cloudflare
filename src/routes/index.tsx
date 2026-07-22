@@ -37,8 +37,10 @@ export const Route = createFileRoute('/')({
 
 const newThreadKey = (): string => crypto.randomUUID().slice(0, 13)
 
-// Stable across renders: recreating the connection adapter would rebuild the
-// chat client mid-stream.
+// Hoisted for clarity, not necessity: useChat reads `connection` once at
+// client construction (its memo is keyed on the client id alone), so a fresh
+// adapter per render would be silently IGNORED — hoisting makes the actual
+// lifetime obvious. `forwardedProps` below is the reactive one.
 const connection = fetchServerSentEvents('/api/run')
 
 function Studio() {
@@ -58,7 +60,7 @@ function Studio() {
   const threadKey = thread ?? ''
   const forwardedProps = useMemo(() => ({ threadKey }), [threadKey])
 
-  const { messages, sendMessage, isLoading, stop, clear } = useChat({
+  const { messages, sendMessage, isLoading, stop, clear, error } = useChat({
     connection,
     forwardedProps,
   })
@@ -74,10 +76,6 @@ function Studio() {
     },
     [sendMessage],
   )
-
-  const handleStop = useCallback(() => {
-    void stop()
-  }, [stop])
 
   const startNewThread = useCallback(() => {
     clear()
@@ -116,12 +114,16 @@ function Studio() {
         <ResizablePanel defaultSize="45" minSize="25">
           <div className="flex h-full min-h-0 flex-col">
             <div className="min-h-0 flex-1">
-              <Transcript messages={messages} isLoading={isLoading} />
+              <Transcript
+                messages={messages}
+                isLoading={isLoading}
+                error={error}
+              />
             </div>
             <div className="border-t border-border p-3">
               <Composer
                 onSend={handleSend}
-                onStop={handleStop}
+                onStop={stop}
                 isLoading={isLoading}
               />
             </div>

@@ -1,5 +1,9 @@
 import { expect, test } from 'bun:test'
-import { extractToolUrl, latestArtifactUrls } from './tool-urls'
+import {
+  extractToolError,
+  extractToolUrl,
+  latestArtifactUrls,
+} from './tool-urls'
 import type { UIMessage } from '@tanstack/ai-client'
 
 test('extractToolUrl reads a plain object', () => {
@@ -102,4 +106,72 @@ test('latestArtifactUrls refuses a composition URL outside /p/', () => {
     }),
   ]
   expect(latestArtifactUrls(messages).compositionUrl).toBeNull()
+})
+
+test('latestArtifactUrls refuses a non-https preview URL', () => {
+  const messages = [
+    toolCallMessage('exposePreview', { url: 'javascript:alert(1)' }),
+    toolCallMessage('exposePreview', { url: 'http://plain.example' }),
+  ]
+  expect(latestArtifactUrls(messages).previewUrl).toBeNull()
+})
+
+test('latestArtifactUrls prefers part.output over the tool-result', () => {
+  const message: UIMessage = {
+    id: 'm-2',
+    role: 'assistant',
+    parts: [
+      {
+        type: 'tool-call',
+        id: 'call-3',
+        name: 'exposePreview',
+        arguments: '{}',
+        state: 'complete',
+        output: { url: 'https://from-output.trycloudflare.com' },
+      },
+      {
+        type: 'tool-result',
+        toolCallId: 'call-3',
+        content: '{"url":"https://from-result.trycloudflare.com"}',
+        state: 'complete',
+      },
+    ],
+  }
+  expect(latestArtifactUrls([message]).previewUrl).toBe(
+    'https://from-output.trycloudflare.com',
+  )
+})
+
+test('extractToolUrl skips array entries without a URL', () => {
+  const output = [
+    { type: 'text', text: 'progress note' },
+    { type: 'text', text: '{"url":"/p/previews/t/z.html"}' },
+  ]
+  expect(extractToolUrl(output)).toBe('/p/previews/t/z.html')
+})
+
+test('extractToolUrl falls through an empty url to the text lane', () => {
+  expect(
+    extractToolUrl({ url: '', text: '{"url":"/p/previews/t/w.html"}' }),
+  ).toBe('/p/previews/t/w.html')
+})
+
+test('extractToolError finds ok:false failures wherever the transport put them', () => {
+  expect(extractToolError({ ok: false, error: 'bundle failed (exit 1)' })).toBe(
+    'bundle failed (exit 1)',
+  )
+  expect(extractToolError({ ok: false })).toBe('tool reported failure')
+  expect(extractToolError('{"ok":false,"error":"no such dir"}')).toBe(
+    'no such dir',
+  )
+  expect(
+    extractToolError([{ type: 'text', text: '{"ok":false,"error":"boom"}' }]),
+  ).toBe('boom')
+})
+
+test('extractToolError reads a bare error string, and ignores successes', () => {
+  expect(extractToolError({ error: 'went wrong' })).toBe('went wrong')
+  expect(extractToolError({ ok: true, url: '/p/x' })).toBeNull()
+  expect(extractToolError('plain text output')).toBeNull()
+  expect(extractToolError(undefined)).toBeNull()
 })

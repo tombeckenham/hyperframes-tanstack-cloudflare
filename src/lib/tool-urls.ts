@@ -55,6 +55,44 @@ export function extractToolUrl(value: unknown): string | null {
 }
 
 /**
+ * Dig a *failure* out of a host tool's output. The publish tools report
+ * failure as an ordinary result — `{ ok: false, error: '…' }` with tool state
+ * still `complete` — so a UI that only looks at the part's `state` renders a
+ * failed publish as success. Same transport tolerance as {@link extractToolUrl}.
+ */
+export function extractToolError(value: unknown): string | null {
+  if (value === null || value === undefined) return null
+  if (typeof value === 'string') {
+    try {
+      return extractToolError(JSON.parse(value))
+    } catch {
+      return null
+    }
+  }
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      const found = extractToolError(entry)
+      if (found !== null) return found
+    }
+    return null
+  }
+  if (typeof value !== 'object') return null
+  const error: unknown = Reflect.get(value, 'error')
+  const errorText = typeof error === 'string' && error !== '' ? error : null
+  if (Reflect.get(value, 'ok') === false) {
+    return errorText ?? 'tool reported failure'
+  }
+  if (errorText !== null) return errorText
+  const text: unknown = Reflect.get(value, 'text')
+  if (typeof text === 'string') return extractToolError(text)
+  const content: unknown = Reflect.get(value, 'content')
+  if (content !== undefined && content !== value) {
+    return extractToolError(content)
+  }
+  return null
+}
+
+/**
  * Walk the whole transcript for the newest preview-tunnel and published-
  * composition URLs. Tool names are matched by suffix: in `do-drives` mode the
  * host tools reach the in-sandbox agent over MCP, and MCP-speaking harnesses
@@ -74,7 +112,12 @@ export function latestArtifactUrls(messages: Array<UIMessage>): {
       const output: unknown = part.output ?? results.get(part.id)?.content
       const url = extractToolUrl(output)
       if (url === null) continue
-      if (part.name.endsWith('exposePreview')) previewUrl = url
+      // Both destinations are allowlisted by shape: the tunnel is always
+      // https, and a composition must live under the /p/ route. Anything else
+      // out of a tool result never becomes an iframe/player src.
+      if (part.name.endsWith('exposePreview') && url.startsWith('https://')) {
+        previewUrl = url
+      }
       if (part.name.endsWith('publishComposition') && url.startsWith('/p/')) {
         compositionUrl = url
       }

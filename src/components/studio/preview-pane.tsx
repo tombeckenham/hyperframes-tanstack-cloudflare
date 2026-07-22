@@ -11,7 +11,7 @@
  *             loosened.
  *   Renders — the thread's published MP4s out of R2, via `/api/artifacts`.
  */
-import { useCallback, useEffect } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { RefreshCwIcon } from 'lucide-react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -64,7 +64,19 @@ function RendersTab({ threadKey }: { threadKey: string }) {
           <RefreshCwIcon />
         </Button>
       </div>
-      {renders.length === 0 && compositions.length === 0 ? (
+      {/* A failed list must NOT render as an empty gallery: "nothing
+          published yet" is an actively wrong instruction when publishes exist
+          and only the listing broke. */}
+      {query.isError ? (
+        <Placeholder>
+          {`Could not load the gallery (${
+            query.error instanceof Error
+              ? query.error.message
+              : 'request failed'
+          }). Use the refresh button to retry.`}
+        </Placeholder>
+      ) : null}
+      {!query.isError && renders.length === 0 && compositions.length === 0 ? (
         <Placeholder>
           Nothing published yet. Ask the agent to render the composition and it
           will land here.
@@ -116,9 +128,14 @@ export function PreviewPane({
   threadKey: string
 }) {
   // The custom element touches `customElements` at registration, so it must
-  // only ever load in the browser — never during SSR module evaluation.
+  // only ever load in the browser — never during SSR module evaluation. If the
+  // chunk fails to load, the element would sit inert and the tab would show
+  // black nothing — surface that instead.
+  const [playerFailed, setPlayerFailed] = useState(false)
   useEffect(() => {
-    void import('@hyperframes/player')
+    import('@hyperframes/player').catch(() => {
+      setPlayerFailed(true)
+    })
   }, [])
 
   return (
@@ -149,7 +166,11 @@ export function PreviewPane({
         )}
       </TabsContent>
       <TabsContent value="player" className="min-h-0 flex-1">
-        {compositionUrl === null ? (
+        {playerFailed ? (
+          <Placeholder>
+            The player script failed to load — reload the page to retry.
+          </Placeholder>
+        ) : compositionUrl === null ? (
           <Placeholder>
             No published composition yet. The agent publishes one with the
             publishComposition tool.

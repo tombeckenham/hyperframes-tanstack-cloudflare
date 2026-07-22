@@ -19,7 +19,7 @@ import {
   CollapsibleTrigger,
 } from '@/components/ui/collapsible'
 import { Spinner } from '@/components/ui/spinner'
-import { extractToolUrl } from '@/lib/tool-urls'
+import { extractToolError, extractToolUrl } from '@/lib/tool-urls'
 import type { MessagePart, ToolResultPart } from '@tanstack/ai-client'
 
 /** The untyped `tool-call` member of the part union, as narrowing yields it. */
@@ -52,13 +52,19 @@ function ToolCallBubble({
 }) {
   const [open, setOpen] = useState(false)
 
-  // The untyped part's `arguments`/`output` are `any` in the lib; pin them to
-  // safe types at the boundary instead of letting `any` spread.
-  const args: string = typeof part.arguments === 'string' ? part.arguments : ''
+  const args = part.arguments
+  // The untyped part's `input`/`output` are `any` in the lib (`arguments` is
+  // an honest string); pin `output` to unknown at the boundary instead of
+  // letting `any` spread.
   const output: unknown = part.output ?? result?.content
   const running = !TOOL_DONE_STATES.has(part.state) && result === undefined
-  const failed = part.state === 'error' || result?.state === 'error'
   const url = useMemo(() => extractToolUrl(output), [output])
+  // Host publish tools report failure as an ordinary `{ ok: false, error }`
+  // result with state still 'complete' — without this, a failed publish
+  // renders as a neutral collapsed row and the reason stays hidden.
+  const toolError = useMemo(() => extractToolError(output), [output])
+  const failed =
+    part.state === 'error' || result?.state === 'error' || toolError !== null
 
   const body = useMemo(() => {
     const sections: Array<string> = []
@@ -80,7 +86,11 @@ function ToolCallBubble({
             />
             <span className="font-medium">{part.name}</span>
             {running ? <Spinner className="size-3.5" /> : null}
-            {failed ? <span className="text-destructive">failed</span> : null}
+            {failed ? (
+              <span className="max-w-64 truncate text-destructive">
+                {toolError ?? 'failed'}
+              </span>
+            ) : null}
             {url !== null ? (
               <a
                 href={url}
