@@ -131,6 +131,12 @@ Dev: `wrangler`, `@cloudflare/vite-plugin`.
 3. `npm i -g hyperframes ffmpeg-static` + symlink ffmpeg onto `PATH`.
 4. `npx hyperframes browser ensure` to bake `chrome-headless-shell` into the image.
 5. `npx hyperframes doctor` as a build-time assertion — fail the image, not the run.
+   **CORRECTED:** `doctor` ALWAYS exits 0, so a bare `RUN hyperframes doctor` asserts
+   nothing — which is precisely how a missing `ffprobe` shipped unnoticed
+   (`ffmpeg-static` carries only `ffmpeg`). Gate on `doctor --json` and the specific
+   checks the image owns (Node.js, FFmpeg, FFprobe, Chrome), NOT on top-level `.ok`,
+   which is false whenever optional TTS/MusicGen are absent and would make the image
+   unbuildable.
 
 **Exit criteria:** `bun run cf-typegen` types resolve; `bun run dev` boots the Worker,
 both DOs, and the container; `docker run` of the image passes `hyperframes doctor`.
@@ -147,6 +153,21 @@ in-sandbox agent over MCP.
   `hyperframes lint --json` before every preview; start `hyperframes preview --port 3002
   --host 0.0.0.0` (never :3000); then call `exposePreview`. Seed it from
   `/Users/tom/code/heygen-com/hyperframes/skills/hyperframes*/SKILL.md`.
+
+  **CORRECTED** — four of those are wrong against the CLI 0.7.68 in the image. See
+  `src/tools/recipe.ts`, which is the source of truth:
+    - `preview` has **no `--host` flag**. It binds `127.0.0.1` unless
+      `HYPERFRAMES_PREVIEW_HOST=0.0.0.0` (now baked into the image as an `ENV`), so the
+      quick tunnel would reach nothing while appearing to work.
+    - `preview` also needs **`--background`**, or the server dies the moment the agent's
+      shell call returns and `exposePreview` has nothing to tunnel to. Use `--status` to
+      read the REAL port — the server scans forward from `--port`, so 3002 is not
+      guaranteed.
+    - `init` **requires `--example`** in a non-TTY, and the sandbox is non-TTY:
+      `init <name> --non-interactive --example blank`.
+    - `check`, not `lint`, is the gate — and it reruns lint itself, so a preceding
+      standalone `lint` is redundant. `validate`/`inspect`/`layout` are deprecated
+      aliases and must not appear in new instructions.
 - **`exposePreview`** — the package's `exposePreviewTool(input, env)`, unmodified.
 - **`publishComposition`** — run `bundleToSingleHtml` in-sandbox, read the single HTML
   back over the fs bridge, `PUT` to R2 under `previews/<threadId>/<slug>.html`, return the

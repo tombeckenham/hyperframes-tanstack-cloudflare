@@ -4,9 +4,24 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Status
 
-**The app is not scaffolded yet.** This directory currently holds only `CLAUDE.md` and
-`PLAN.md`. Read `PLAN.md` first — it is the build order, and it records the decisions
-(and their rationale) that this file summarises. Update both as the code lands.
+**Phases 0–3 of `PLAN.md` are merged.** Scaffold, strict toolchain, Cloudflare + agent
+wiring, the sandbox container image, the host tools and the R2 lane all exist and are
+green on CI.
+
+**Phase 4 (UI) has not started**, and that is the whole user-facing half: there is no
+chat transcript, no composer, no preview pane, and no `src/routes/api.run.ts`. So there
+is currently **no way to trigger an agent run** — `src/routes/index.tsx` is still the
+scaffold page, and `/runs` is deliberately unrouted (see below). Nothing has driven a
+real run end to end yet, so expect first-run integration bugs in the bridge and the
+preview tunnel; `PLAN.md` risk 5 says the same.
+
+Phase 5 (deploy, README) has not started.
+
+Read `PLAN.md` for the build order and the rationale behind the decisions this file
+summarises — but treat it as the ORIGINAL plan, not current truth. Several of its
+commands were wrong and are annotated inline with `CORRECTED:`. Where they disagree,
+`src/tools/recipe.ts` and this file win, because both were verified against the CLI
+actually installed in the image.
 
 ## What this is
 
