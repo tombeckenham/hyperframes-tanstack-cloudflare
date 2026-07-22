@@ -96,14 +96,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # NODE_PATH is needed because these are GLOBAL installs, which `require` does
 # not otherwise resolve from an arbitrary cwd.
 #
-# KNOWN SKEW: ffmpeg is 7.0.2 while ffprobe is 5.2.x — no npm package ships a
-# matched pair. `@ffprobe-installer/ffprobe` is used over `ffprobe-static`
-# because the latter pins 4.0.2 (2018). Probing is metadata-only over ordinary
-# containers (mp4/mov/webm/mp3/wav) so the skew is low-risk, and `hyperframes
-# doctor` accepts it. If it ever bites, the two alternatives are: install the
-# distro `ffmpeg` package for a matched-but-older 4.4.2 pair, or unpack a
-# johnvansickle static tarball, which carries both binaries at one version at
-# the cost of pinning a URL that upstream rotates.
+# KNOWN SKEW: no npm package ships a matched ffmpeg/ffprobe pair. Here ffmpeg
+# is 7.0.2 (2024) and ffprobe is a 2023 snapshot (N-66595) — both johnvansickle
+# static builds, so at least the same vendor and close in age.
+# `@ffprobe-installer/ffprobe` is used over `ffprobe-static` specifically
+# because the latter still pins 4.0.2, from 2018.
+#
+# Probing is metadata-only over ordinary containers (mp4/mov/webm/mp3/wav), so
+# the remaining skew is low-risk and `hyperframes doctor` accepts it. If it ever
+# does bite, the alternatives are: install the distro `ffmpeg` package for a
+# matched-but-older 4.4.2 pair, or unpack a johnvansickle tarball, which carries
+# both binaries at one version at the cost of pinning a URL upstream rotates.
 #
 # The `-version` calls then assert both symlinks resolve AND that the binaries
 # match the image architecture, so a cross-arch mistake surfaces right here
