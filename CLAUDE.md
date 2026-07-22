@@ -4,18 +4,23 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Status
 
-**Phases 0–3 of `PLAN.md` are merged.** Scaffold, strict toolchain, Cloudflare + agent
-wiring, the sandbox container image, the host tools and the R2 lane all exist and are
-green on CI.
+**Phases 0–4 of `PLAN.md` are merged.** Scaffold, strict toolchain, Cloudflare + agent
+wiring, the sandbox container image, the host tools, the R2 lane, and the studio UI
+(chat transcript, composer, preview pane, `/api/run`, `/api/artifacts`) all exist and
+are green on CI. The bridge's pure logic lives in tested libs: `src/lib/run-body.ts`
+(body flattening — top layer wins), `src/lib/stream-chunk.ts` (frame guard),
+`src/lib/run-tail.ts` (the WS pump, incl. abnormal-close-is-a-failure semantics),
+`src/lib/tool-urls.ts` (artifact URL/error extraction, https/`/p/` allowlists).
 
-**Phase 4 (UI) has not started**, and that is the whole user-facing half: there is no
-chat transcript, no composer, no preview pane, and no `src/routes/api.run.ts`. So there
-is currently **no way to trigger an agent run** — `src/routes/index.tsx` is still the
-scaffold page, and `/runs` is deliberately unrouted (see below). Nothing has driven a
-real run end to end yet, so expect first-run integration bugs in the bridge and the
-preview tunnel; `PLAN.md` risk 5 says the same.
+**Nothing has driven a real run end to end yet** — the UI shipped verified by types,
+lint and unit tests, not by a live container run. Expect first-run integration bugs in
+the bridge and the preview tunnel; `PLAN.md` risk 5 says the same.
 
-Phase 5 (deploy, README) has not started.
+Phase 5 (deploy, README) is in progress. The Worker is deployed to
+https://hyperframes-studio.openstory.workers.dev (R2 bucket created,
+`ANTHROPIC_API_KEY` secret set); the root page and `/api/artifacts` respond.
+What remains is the end-to-end shakedown: a real chat-driven run in the
+deployed container.
 
 Read `PLAN.md` for the build order and the rationale behind the decisions this file
 summarises — but treat it as the ORIGINAL plan, not current truth. Several of its
