@@ -54,14 +54,19 @@ jobs:
       - name: Build
         run: bun run build
 
-      # The route tree is generated and committed. If a route file was added
-      # without regenerating, the committed tree is stale and routing silently
-      # diverges from the filesystem.
+      # The route tree is generated and committed, so a route added without
+      # regenerating leaves routing silently diverged from the filesystem.
+      #
+      # Checked against `bun run build` above, NOT `tsr generate`: the
+      # tanstackStart() Vite plugin is what actually writes this file, and it
+      # emits a trailing `declare module '@tanstack/react-start'` Register block
+      # (ssr + router types) that the standalone CLI does not. Running the CLI
+      # silently strips that block — and the result still typechecks, so nothing
+      # else would catch it.
       - name: Route tree is up to date
         run: |
-          bunx tsr generate
           if ! git diff --quiet -- src/routeTree.gen.ts; then
-            echo "::error::src/routeTree.gen.ts is stale. Run 'bun run generate-routes' and commit."
+            echo "::error::src/routeTree.gen.ts is stale. Run 'bun run build' and commit it."
             git diff -- src/routeTree.gen.ts
             exit 1
           fi

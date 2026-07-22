@@ -27,6 +27,7 @@ bun run dev          # vite dev on :3001 — Worker + DOs + container in workerd
 bun run build
 bun run deploy       # bun run build && wrangler deploy
 bun run typecheck    # tsc --noEmit
+bun run test         # bun test
 bun run lint         # oxlint
 bun run lint:fix     # oxlint --fix
 bun run format       # oxfmt
@@ -36,6 +37,16 @@ bun run cf-typegen   # wrangler types → worker-configuration.d.ts (run after e
 
 `lefthook` runs lint + format:check + typecheck on `pre-commit` (see `lefthook.yml`).
 Install hooks with `bun run prepare` (or `bunx lefthook install`) after a fresh clone.
+CI (`.github/workflows/ci.yml`) runs the same three plus `test` and `build`, and
+separately builds the sandbox image — the hook is skippable with `--no-verify`, CI is not.
+
+**`src/routeTree.gen.ts` is written by the `tanstackStart()` Vite plugin**, so regenerate
+it with `bun run dev` or `bun run build` and commit the result. Do **not** use the
+standalone `tsr generate` CLI: it emits a tree WITHOUT the trailing
+`declare module '@tanstack/react-start'` Register block (`ssr`, `router`), and the
+downgraded file still typechecks — so nothing catches the loss. The scaffold's
+`generate-routes` script was removed for that reason. CI asserts the committed tree
+matches what the build produces.
 
 Adding UI:
 
