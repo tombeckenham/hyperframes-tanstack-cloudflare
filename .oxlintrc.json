@@ -1,0 +1,33 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": [
+    "typescript",
+    "react",
+    "react-perf",
+    "import",
+    "promise",
+    "unicorn"
+  ],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "error",
+    "perf": "error",
+    "pedantic": "warn"
+  },
+  "rules": {
+    "typescript/no-explicit-any": "error",
+    "typescript/no-non-null-assertion": "error",
+    "no-console": ["error", { "allow": ["warn", "error"] }],
+
+    // tsconfig uses `"jsx": "react-jsx"` (the automatic runtime), so React
+    // need not be in scope and this classic-runtime rule never applies.
+    "react/react-in-jsx-scope": "off"
+  },
+  "ignorePatterns": [
+    "src/routeTree.gen.ts",
+    "worker-configuration.d.ts",
+    "src/components/ui/**",
+    ".wrangler/**",
+    "dist/**"
+  ]
+}

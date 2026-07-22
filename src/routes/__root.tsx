@@ -40,6 +40,18 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
   shellComponent: RootDocument,
 })
 
+// Hoisted out of RootDocument so they are not reallocated on every render —
+// `react-perf/jsx-no-new-object-as-prop` and `jsx-no-new-array-as-prop`.
+const devtoolsConfig = { position: 'bottom-right' } as const
+
+const devtoolsPlugins = [
+  {
+    name: 'Tanstack Router',
+    render: <TanStackRouterDevtoolsPanel />,
+  },
+  TanStackQueryDevtools,
+]
+
 function RootDocument({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
@@ -48,18 +60,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
       </head>
       <body>
         {children}
-        <TanStackDevtools
-          config={{
-            position: 'bottom-right',
-          }}
-          plugins={[
-            {
-              name: 'Tanstack Router',
-              render: <TanStackRouterDevtoolsPanel />,
-            },
-            TanStackQueryDevtools,
-          ]}
-        />
+        <TanStackDevtools config={devtoolsConfig} plugins={devtoolsPlugins} />
         <Scripts />
       </body>
     </html>
