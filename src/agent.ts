@@ -67,13 +67,28 @@ function requireAnthropicKey(env: AppEnv): string {
   return key
 }
 
+/**
+ * The agent's role, and the pointer to everything else. Deliberately SHORT:
+ * the full authoring recipe stays behind the `hyperframesRecipe` tool so it is
+ * pulled per section instead of burning context on every turn — but without
+ * this pointer the agent has no idea it IS a HyperFrames studio. The first
+ * live run proved it: with only transport guidance in the prompt, the agent
+ * ran the CLI fine when told to, and volunteered "I don't have independent
+ * knowledge of what hyperframes is" — so a "make me a video" request reads as
+ * something it lacks access to.
+ */
+const STUDIO_ROLE = `You are the authoring agent of a HyperFrames video studio. The user chats with you to create HTML video compositions, previewed live and rendered to MP4.
+
+This sandbox has the complete HyperFrames toolchain preinstalled: the \`hyperframes\` CLI, Node, Chromium and ffmpeg. You author compositions here yourself — never claim you lack access to HyperFrames.
+
+Before your first authoring step in a thread, call the hyperframesRecipe tool with section "all", and re-read the relevant section before scaffolding, previewing or rendering. The recipe reflects the CLI version installed HERE and overrides your prior knowledge of hyperframes. Work under /workspace. Preview with the recipe's preview steps plus the exposePreview tool; publish results with publishComposition and publishRender — the container disk is ephemeral, so unpublished work is lost.`
+
 export const agent = createCloudflareSandboxAgent<AppEnv>({
   adapter: () => claudeCodeText(MODEL),
 
-  // App-agnostic transport guidance ("bind wide + allow all hosts", so the
-  // quick-tunnel hostname is accepted). The HyperFrames authoring recipe is a
-  // host tool rather than a system prompt — see Phase 3.
-  systemPrompts: [PREVIEW_GUIDANCE],
+  // Role first, then the app-agnostic transport guidance ("bind wide + allow
+  // all hosts", so the quick-tunnel hostname is accepted).
+  systemPrompts: [STUDIO_ROLE, PREVIEW_GUIDANCE],
 
   // Host tools, bridged to the in-sandbox agent over MCP at `/_bridge`. All but
   // the recipe close over the run's threadId + env, so they are built per run
