@@ -112,7 +112,13 @@ export const Route = createFileRoute('/api/run')({
         POST: {
           middleware: [runBodyMiddleware],
           handler: async ({ request, context }) => {
-            const { messages, threadKey } = context.runBody
+            // `agentSessionId` is the CLAUDE session inside the container —
+            // nothing to do with the visitor's cookie session below.
+            const {
+              messages,
+              threadKey,
+              sessionId: agentSessionId,
+            } = context.runBody
 
             // Contract obligations 1 and 2: derive, never trust; persist the
             // session a first-time visitor was just minted.
@@ -136,6 +142,12 @@ export const Route = createFileRoute('/api/run')({
                 // (local dev → host.docker.internal). Safe to trust on
                 // Cloudflare: the edge only routes hostnames you own here.
                 publicHost: new URL(request.url).host,
+                // The coordinator maps metadata.sessionId → the adapter's
+                // `--resume`, keeping the in-sandbox agent's context across
+                // turns (see src/lib/run-body.ts on the round-trip).
+                ...(agentSessionId !== undefined
+                  ? { metadata: { sessionId: agentSessionId } }
+                  : {}),
               }
               const { runId } = await coordinator.startRun(input)
               const chunks = tailRun(coordinator, runId, abortController.signal)

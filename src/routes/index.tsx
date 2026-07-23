@@ -11,7 +11,7 @@
  * (src/lib/session.ts). Keeping it in the URL means a reload resumes the same
  * sandbox (`lifecycle: { reuse: 'thread' }`) and the same artifact namespace.
  */
-import { useCallback, useEffect, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 import { fetchServerSentEvents, useChat } from '@tanstack/ai-react'
 import { MoonIcon, PlusIcon, SunIcon } from 'lucide-react'
@@ -27,6 +27,8 @@ import { Transcript } from '@/components/chat/transcript'
 import { Composer } from '@/components/chat/composer'
 import { latestArtifactUrls } from '@/lib/tool-urls'
 import { localChatPersistence } from '@/lib/chat-persistence'
+import { readClaudeSessionId } from '@/lib/claude-session'
+import type { StreamChunk } from '@tanstack/ai'
 import { PreviewPane } from '@/components/studio/preview-pane'
 import { toggleTheme } from '@/lib/theme'
 import { useIsDesktop } from '@/hooks/use-is-desktop'
@@ -65,7 +67,30 @@ function Studio() {
   }, [thread, navigate])
 
   const threadKey = thread ?? ''
-  const forwardedProps = useMemo(() => ({ threadKey }), [threadKey])
+
+  // The claude-code session echo (src/lib/claude-session.ts): remembered per
+  // thread for the life of the page, sent back so the coordinator can
+  // `--resume` and the agent keeps its working context across turns.
+  // Deliberately NOT persisted: the session lives on the container's
+  // ephemeral disk, so a saved id would go stale across cold starts.
+  const [agentSessionId, setAgentSessionId] = useState<string | undefined>(
+    undefined,
+  )
+  useEffect(() => {
+    setAgentSessionId(undefined)
+  }, [threadKey])
+  const handleChunk = useCallback((chunk: StreamChunk) => {
+    const sessionId = readClaudeSessionId(chunk)
+    if (sessionId !== undefined) setAgentSessionId(sessionId)
+  }, [])
+
+  const forwardedProps = useMemo(
+    () =>
+      agentSessionId !== undefined
+        ? { threadKey, sessionId: agentSessionId }
+        : { threadKey },
+    [threadKey, agentSessionId],
+  )
 
   // `id` keys both the chat client and its persisted transcript: switching
   // threads swaps clients, and each hydrates its own thread's messages from
@@ -75,6 +100,7 @@ function Studio() {
     forwardedProps,
     id: `thread-${threadKey}`,
     persistence: localChatPersistence,
+    onChunk: handleChunk,
   })
 
   const { previewUrl, compositionUrl } = useMemo(
