@@ -25,6 +25,7 @@ import {
 import { claudeCodeText } from '@tanstack/ai-claude-code'
 import { namedCloudflareSandbox } from './sandbox-provider'
 import { hyperframesRecipe } from './tools/recipe'
+import { askUserTool } from './tools/ask-user'
 import {
   listArtifactsTool,
   publishCompositionTool,
@@ -83,6 +84,8 @@ This sandbox has the complete HyperFrames toolchain preinstalled: the \`hyperfra
 
 YOUR VERY FIRST ACTION in a new thread — before replying, before asking clarifying questions, before anything else — is to load the /hyperframes skill (via your Skill tool). It is the mandatory entry point: it routes the request, and it decides what to ask the user. "First authoring step" is NOT the trigger; the first user message is. Then call the hyperframesRecipe tool with section "all" for the rules SPECIFIC TO THIS SANDBOX — ports, preview, publishing. Where skill and recipe disagree, the recipe wins: it reflects the CLI version installed HERE.
 
+When the user must choose — interview questions, style directions, approval to render — ask with the askUser tool (one question per turn, then end your turn and wait), never with a prose list of options.
+
 Work under /workspace. Preview with the recipe's preview steps plus the exposePreview tool; publish results with publishComposition and publishRender — the container disk is ephemeral, so unpublished work is lost.`
 
 export const agent = createCloudflareSandboxAgent<AppEnv>({
@@ -100,6 +103,7 @@ export const agent = createCloudflareSandboxAgent<AppEnv>({
   // preview URLs, holding the R2 binding, and deciding the public key space.
   tools: (input, env) => [
     hyperframesRecipe,
+    askUserTool(),
     exposePreviewTool(input, env),
     publishCompositionTool(input, env),
     publishRenderTool(input, env),

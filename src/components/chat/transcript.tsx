@@ -39,18 +39,33 @@ function UserTurn({ message }: { message: UIMessage }) {
   )
 }
 
-function AssistantTurn({ message }: { message: UIMessage }) {
+function AssistantTurn({
+  message,
+  busy,
+  onOptionSelect,
+}: {
+  message: UIMessage
+  busy: boolean
+  onOptionSelect: (text: string) => void
+}) {
   const results = toolResultsById(message)
   return (
     <Message align="start">
       <MessageContent>
+        {/* The part union has no COMMON id field (tool-call parts have one,
+            text/thinking don't), and the stream only appends — so position is
+            the only identity available. */}
+        {/* oxlint-disable react/no-array-index-key */}
         {message.parts.map((part, index) => (
-          // The part union has no COMMON id field (tool-call parts have one,
-          // text/thinking don't), and the stream only appends — so position
-          // is the only identity available.
-          // oxlint-disable-next-line react/no-array-index-key
-          <AssistantPartView key={index} part={part} results={results} />
+          <AssistantPartView
+            key={index}
+            part={part}
+            results={results}
+            busy={busy}
+            onOptionSelect={onOptionSelect}
+          />
         ))}
+        {/* oxlint-enable react/no-array-index-key */}
       </MessageContent>
     </Message>
   )
@@ -80,6 +95,7 @@ export function Transcript({
   messages,
   isLoading,
   error,
+  onOptionSelect,
 }: {
   messages: Array<UIMessage>
   isLoading: boolean
@@ -89,6 +105,8 @@ export function Transcript({
    * so a page that drops this value shows a run that just… stops.
    */
   error: Error | undefined
+  /** Sends an askUser card's chosen option as the next user message. */
+  onOptionSelect: (text: string) => void
 }) {
   return (
     <MessageScrollerProvider autoScroll defaultScrollPosition="end">
@@ -106,7 +124,11 @@ export function Transcript({
                   {message.role === 'user' ? (
                     <UserTurn message={message} />
                   ) : (
-                    <AssistantTurn message={message} />
+                    <AssistantTurn
+                      message={message}
+                      busy={isLoading}
+                      onOptionSelect={onOptionSelect}
+                    />
                   )}
                 </MessageGroup>
               </MessageScrollerItem>
@@ -120,7 +142,7 @@ export function Transcript({
                 </Marker>
               </MessageScrollerItem>
             ) : null}
-            {error !== undefined ? (
+            {error === undefined ? null : (
               <MessageScrollerItem>
                 <Bubble variant="destructive">
                   <BubbleContent className="whitespace-pre-wrap">
@@ -128,7 +150,7 @@ export function Transcript({
                   </BubbleContent>
                 </Bubble>
               </MessageScrollerItem>
-            ) : null}
+            )}
           </MessageScrollerContent>
         </MessageScrollerViewport>
         <MessageScrollerButton direction="end" />

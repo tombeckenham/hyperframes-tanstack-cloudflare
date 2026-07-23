@@ -26,7 +26,11 @@
     // `_splat` is TanStack Router's own name for the splat param on a `$`
     // route. We do not get to pick it, and the routes serving R2 keys (which
     // contain slashes) require a splat.
-    "no-underscore-dangle": ["error", { "allow": ["_splat"] }]
+    "no-underscore-dangle": ["error", { "allow": ["_splat"] }],
+
+    // React components and route handlers routinely exceed 50 lines without
+    // being worse for it; the warning was pure noise on every lint run.
+    "max-lines-per-function": "off"
   },
   "ignorePatterns": [
     "src/routeTree.gen.ts",

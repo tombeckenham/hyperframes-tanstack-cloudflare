@@ -26,6 +26,7 @@ import { Button } from '@/components/ui/button'
 import { Transcript } from '@/components/chat/transcript'
 import { Composer } from '@/components/chat/composer'
 import { latestArtifactUrls } from '@/lib/tool-urls'
+import { localChatPersistence } from '@/lib/chat-persistence'
 import { PreviewPane } from '@/components/studio/preview-pane'
 import { toggleTheme } from '@/lib/theme'
 import { useIsDesktop } from '@/hooks/use-is-desktop'
@@ -66,9 +67,14 @@ function Studio() {
   const threadKey = thread ?? ''
   const forwardedProps = useMemo(() => ({ threadKey }), [threadKey])
 
-  const { messages, sendMessage, isLoading, stop, clear, error } = useChat({
+  // `id` keys both the chat client and its persisted transcript: switching
+  // threads swaps clients, and each hydrates its own thread's messages from
+  // localStorage — the client-side mirror of `lifecycle: { reuse: 'thread' }`.
+  const { messages, sendMessage, isLoading, stop, error } = useChat({
     connection,
     forwardedProps,
+    id: `thread-${threadKey}`,
+    persistence: localChatPersistence,
   })
 
   const { previewUrl, compositionUrl } = useMemo(
@@ -83,10 +89,11 @@ function Studio() {
     [sendMessage],
   )
 
+  // No clear() here: the id change swaps in a fresh client, and clearing
+  // would persist an empty transcript over the OLD thread's saved one.
   const startNewThread = useCallback(() => {
-    clear()
     void navigate({ search: { thread: newThreadKey() } })
-  }, [clear, navigate])
+  }, [navigate])
 
   const isDesktop = useIsDesktop()
 
@@ -99,6 +106,7 @@ function Studio() {
       error={error}
       onSend={handleSend}
       onStop={stop}
+      onOptionSelect={handleSend}
     />
   )
   const preview = (
@@ -169,17 +177,24 @@ function ChatColumn({
   error,
   onSend,
   onStop,
+  onOptionSelect,
 }: {
   messages: Array<UIMessage>
   isLoading: boolean
   error: Error | undefined
   onSend: (text: string) => void
   onStop: () => void
+  onOptionSelect: (text: string) => void
 }) {
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="min-h-0 flex-1">
-        <Transcript messages={messages} isLoading={isLoading} error={error} />
+        <Transcript
+          messages={messages}
+          isLoading={isLoading}
+          error={error}
+          onOptionSelect={onOptionSelect}
+        />
       </div>
       <div className="border-t border-border p-3">
         <Composer onSend={onSend} onStop={onStop} isLoading={isLoading} />
