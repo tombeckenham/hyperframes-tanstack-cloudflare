@@ -10,6 +10,8 @@
  * a call/result pair.
  */
 import { useMemo, useState } from 'react'
+import Markdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { ChevronRightIcon } from 'lucide-react'
 import { ThinkingPart as ThinkingPartView } from '@tanstack/ai-react-ui'
 import { Bubble, BubbleContent } from '@/components/ui/bubble'
@@ -20,7 +22,12 @@ import {
 } from '@/components/ui/collapsible'
 import { Spinner } from '@/components/ui/spinner'
 import { extractToolError, extractToolUrl } from '@/lib/tool-urls'
+import { parseAskUserArguments } from '@/lib/ask-user'
+import { QuestionCard } from './question-card'
 import type { MessagePart, ToolResultPart } from '@tanstack/ai-client'
+
+// Hoisted: a fresh array per render would recreate the markdown pipeline.
+const REMARK_PLUGINS = [remarkGfm]
 
 /** The untyped `tool-call` member of the part union, as narrowing yields it. */
 type ToolCallPartOf = Extract<MessagePart, { type: 'tool-call' }>
@@ -125,16 +132,22 @@ function stopPropagation(event: { stopPropagation: () => void }): void {
 export function AssistantPartView({
   part,
   results,
+  busy,
+  onOptionSelect,
 }: {
   part: MessagePart
   results: Map<string, ToolResultPart>
+  /** True while a run streams — question options are inert meanwhile. */
+  busy: boolean
+  /** Sends a chosen askUser option as the next user message. */
+  onOptionSelect: (text: string) => void
 }) {
   switch (part.type) {
     case 'text':
       return part.content === '' ? null : (
         <Bubble variant="ghost">
-          <BubbleContent className="whitespace-pre-wrap">
-            {part.content}
+          <BubbleContent className="prose prose-sm dark:prose-invert max-w-none">
+            <Markdown remarkPlugins={REMARK_PLUGINS}>{part.content}</Markdown>
           </BubbleContent>
         </Bubble>
       )
@@ -145,8 +158,24 @@ export function AssistantPartView({
           className="rounded-xl bg-muted/50 px-3 py-2 text-sm text-muted-foreground"
         />
       )
-    case 'tool-call':
+    case 'tool-call': {
+      // askUser renders as a tappable question card, not a tool row. While
+      // its arguments are still streaming the parse fails and it falls back
+      // to the ordinary bubble, flipping to the card once complete.
+      if (part.name.endsWith('askUser')) {
+        const parsed = parseAskUserArguments(part.arguments)
+        if (parsed !== null) {
+          return (
+            <QuestionCard
+              input={parsed}
+              disabled={busy}
+              onPick={onOptionSelect}
+            />
+          )
+        }
+      }
       return <ToolCallBubble part={part} result={results.get(part.id)} />
+    }
     default:
       return null
   }
