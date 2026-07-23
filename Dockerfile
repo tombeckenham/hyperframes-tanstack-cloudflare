@@ -138,6 +138,16 @@ RUN npm install -g hyperframes@${HYPERFRAMES_VERSION} ffmpeg-static @ffprobe-ins
 # start would pay it again.
 RUN hyperframes browser ensure
 
+# The HyperFrames agent skills, installed where the in-container `claude` CLI
+# auto-discovers them (/root/.claude/skills). `skills update` resolves the core
+# set for the installed CLI version — /hyperframes is the entry-point workflow,
+# and a chat prompt beginning with a slash ("/hyperframes …") invokes a skill
+# directly, since the studio composer's text reaches `claude -p` verbatim.
+# Baked at build for the same reason as everything else here: the disk is
+# ephemeral, and a run-time install would be paid on every cold start.
+RUN HOME=/root hyperframes skills update --json \
+ && test -s /root/.claude/skills/hyperframes/SKILL.md
+
 # `bundleToSingleHtml` — compiles a project into ONE self-contained HTML file,
 # which the host then publishes to R2 so a composition outlives the container
 # that produced it. It ships in `@hyperframes/core`, which the `hyperframes` CLI

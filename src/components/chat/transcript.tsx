@@ -64,6 +64,14 @@ function EmptyState() {
         Describe the video you want. The agent authors a HyperFrames composition
         in a sandbox, previews it live, and renders it to MP4.
       </p>
+      <p className="max-w-sm text-xs text-muted-foreground">
+        Tip: messages starting with a slash invoke the agent&apos;s skills
+        directly — try{' '}
+        <code className="rounded bg-muted px-1">
+          /hyperframes a 10s product teaser
+        </code>
+        .
+      </p>
     </div>
   )
 }
