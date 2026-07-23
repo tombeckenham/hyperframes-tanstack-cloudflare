@@ -38,6 +38,7 @@ import { env } from 'cloudflare:workers'
 import { deriveThreadId, resolveSession } from '../lib/session'
 import { runBodySchema } from '../lib/run-body'
 import { tailChunks } from '../lib/run-tail'
+import { withSseKeepAlive } from '../lib/sse-keepalive'
 import type { StreamChunk } from '@tanstack/ai'
 import type { StartRunInput } from '@tanstack/ai-sandbox-cloudflare/agent'
 import type { ThreadId } from '../lib/session'
@@ -138,9 +139,11 @@ export const Route = createFileRoute('/api/run')({
               }
               const { runId } = await coordinator.startRun(input)
               const chunks = tailRun(coordinator, runId, abortController.signal)
-              const sseStream = toServerSentEventsStream(
-                chunks,
-                abortController,
+              // Keep-alive comments ride along so a long silent tool run does
+              // not read as an idle connection — mobile WebKit kills those,
+              // surfacing as "Load failed" mid-run (src/lib/sse-keepalive.ts).
+              const sseStream = withSseKeepAlive(
+                toServerSentEventsStream(chunks, abortController),
               )
               const headers = new Headers({
                 'content-type': 'text/event-stream',
