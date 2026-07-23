@@ -1,5 +1,8 @@
 /**
- * The studio: transcript + composer on the left, preview pane on the right.
+ * The studio. Two layouts over one state:
+ *   - desktop (md+): transcript + composer left, preview pane right, resizable.
+ *   - mobile: one column, top-level Chat | Preview tabs — the preview pane
+ *     keeps its own Live/Player/Renders tabs inside the Preview tab.
  *
  * Thread identity, client side: the URL search param `thread` is the
  * `threadKey` — client-chosen, one per chat thread, NOT a secret and NOT a
@@ -18,12 +21,15 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from '@/components/ui/resizable'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Transcript } from '@/components/chat/transcript'
 import { Composer } from '@/components/chat/composer'
 import { latestArtifactUrls } from '@/lib/tool-urls'
 import { PreviewPane } from '@/components/studio/preview-pane'
 import { toggleTheme } from '@/lib/theme'
+import { useIsDesktop } from '@/hooks/use-is-desktop'
+import type { UIMessage } from '@tanstack/ai-react'
 
 const searchSchema = z.object({
   /** The threadKey. Length-capped to match the server's schema. */
@@ -82,7 +88,26 @@ function Studio() {
     void navigate({ search: { thread: newThreadKey() } })
   }, [clear, navigate])
 
+  const isDesktop = useIsDesktop()
+
   if (thread === undefined) return null
+
+  const chat = (
+    <ChatColumn
+      messages={messages}
+      isLoading={isLoading}
+      error={error}
+      onSend={handleSend}
+      onStop={stop}
+    />
+  )
+  const preview = (
+    <PreviewPane
+      previewUrl={previewUrl}
+      compositionUrl={compositionUrl}
+      threadKey={threadKey}
+    />
+  )
 
   return (
     <div className="flex h-dvh flex-col">
@@ -108,36 +133,57 @@ function Studio() {
           </Button>
         </div>
       </header>
-      {/* react-resizable-panels v4: string sizes are percentages; numbers
-          would be pixels. Orientation defaults to horizontal. */}
-      <ResizablePanelGroup className="min-h-0 flex-1">
-        <ResizablePanel defaultSize="45" minSize="25">
-          <div className="flex h-full min-h-0 flex-col">
-            <div className="min-h-0 flex-1">
-              <Transcript
-                messages={messages}
-                isLoading={isLoading}
-                error={error}
-              />
-            </div>
-            <div className="border-t border-border p-3">
-              <Composer
-                onSend={handleSend}
-                onStop={stop}
-                isLoading={isLoading}
-              />
-            </div>
-          </div>
-        </ResizablePanel>
-        <ResizableHandle />
-        <ResizablePanel defaultSize="55" minSize="25">
-          <PreviewPane
-            previewUrl={previewUrl}
-            compositionUrl={compositionUrl}
-            threadKey={threadKey}
-          />
-        </ResizablePanel>
-      </ResizablePanelGroup>
+      {isDesktop ? (
+        /* react-resizable-panels v4: string sizes are percentages; numbers
+           would be pixels. Orientation defaults to horizontal. */
+        <ResizablePanelGroup className="min-h-0 flex-1">
+          <ResizablePanel defaultSize="45" minSize="25">
+            {chat}
+          </ResizablePanel>
+          <ResizableHandle />
+          <ResizablePanel defaultSize="55" minSize="25">
+            {preview}
+          </ResizablePanel>
+        </ResizablePanelGroup>
+      ) : (
+        <Tabs defaultValue="chat" className="flex min-h-0 flex-1 flex-col">
+          <TabsList className="mx-3 mt-2 self-start">
+            <TabsTrigger value="chat">Chat</TabsTrigger>
+            <TabsTrigger value="preview">Preview</TabsTrigger>
+          </TabsList>
+          <TabsContent value="chat" className="min-h-0 flex-1">
+            {chat}
+          </TabsContent>
+          <TabsContent value="preview" className="min-h-0 flex-1">
+            {preview}
+          </TabsContent>
+        </Tabs>
+      )}
+    </div>
+  )
+}
+
+function ChatColumn({
+  messages,
+  isLoading,
+  error,
+  onSend,
+  onStop,
+}: {
+  messages: Array<UIMessage>
+  isLoading: boolean
+  error: Error | undefined
+  onSend: (text: string) => void
+  onStop: () => void
+}) {
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="min-h-0 flex-1">
+        <Transcript messages={messages} isLoading={isLoading} error={error} />
+      </div>
+      <div className="border-t border-border p-3">
+        <Composer onSend={onSend} onStop={onStop} isLoading={isLoading} />
+      </div>
     </div>
   )
 }
