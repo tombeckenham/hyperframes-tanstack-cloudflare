@@ -43,11 +43,16 @@ function readForwarded(value: object, key: string): string | undefined {
 }
 
 /**
- * The only browser-chosen field this app forwards. The upstream example also
- * carried harness/model pickers here; this app is single-harness, so they are
- * gone rather than ignored.
+ * The browser-chosen fields this app forwards. `threadKey` names the thread;
+ * `sessionId` is the claude-code session echo — the adapter emits it as a
+ * CUSTOM `claude-code.session-id` chunk, the client sends it back, and the
+ * coordinator turns it into `--resume` so the in-sandbox agent keeps its full
+ * working context (loaded skills, read files, interview state) across turns.
+ * Without it every turn is a fresh session fed a lossy text preamble that
+ * drops tool calls — which is how "pick B" once landed on an agent that could
+ * no longer see the options it had offered.
  */
-const FORWARDED_KEYS = ['threadKey'] as const
+const FORWARDED_KEYS = ['threadKey', 'sessionId'] as const
 
 /**
  * Flatten the nested `data`/`forwardedProps` layers into one object.
@@ -76,6 +81,12 @@ export const runBodySchema = z.preprocess(
      * it only becomes one after being hashed with the visitor's session id.
      */
     threadKey: z.string().min(1).max(128),
+    /**
+     * The claude-code session to resume, echoed from a prior run's
+     * `claude-code.session-id` chunk. Harmless if stale or forged: it only
+     * selects a session file inside the caller's OWN thread-pinned container.
+     */
+    sessionId: z.string().min(1).max(128).optional(),
   }),
 )
 
