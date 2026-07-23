@@ -15,7 +15,6 @@
 import {
   PREVIEW_GUIDANCE,
   createCloudflareSandboxAgent,
-  exposePreviewTool,
 } from '@tanstack/ai-sandbox-cloudflare/agent'
 import {
   createSecrets,
@@ -26,6 +25,9 @@ import { claudeCodeText } from '@tanstack/ai-claude-code'
 import { namedCloudflareSandbox } from './sandbox-provider'
 import { hyperframesRecipe } from './tools/recipe'
 import { askUserTool } from './tools/ask-user'
+// Ours, not the package's: verifies the tunnel end to end and re-establishes
+// stale ones — see src/tools/preview.ts for the failure mode this closes.
+import { exposePreviewTool } from './tools/preview'
 import {
   listArtifactsTool,
   publishCompositionTool,
