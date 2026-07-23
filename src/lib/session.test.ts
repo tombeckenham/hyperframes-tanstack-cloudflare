@@ -134,7 +134,17 @@ test('the derived id does not leak the session id', async () => {
   const session = createSessionId()
   const threadId = await deriveThreadId(session, 'my-video')
   expect(threadId).not.toContain(session)
-  expect(threadId).toMatch(HEX_64)
+  expect(threadId).toMatch(/^[0-9a-f]{32}$/u)
+})
+
+test('the derived id fits the sandbox ID limit', async () => {
+  // @cloudflare/sandbox rejects container IDs over 63 chars (a DNS label).
+  // Full SHA-256 hex is 64 — one over — and the rejection only fires at the
+  // first getSandbox() call of a real run, which is exactly how it shipped
+  // broken once. Pin the truncation.
+  const threadId = await deriveThreadId(createSessionId(), 'my-video')
+  expect(threadId.length).toBeLessThanOrEqual(63)
+  expect(threadId.length).toBe(32)
 })
 
 test('field boundaries cannot be shifted to collide', async () => {

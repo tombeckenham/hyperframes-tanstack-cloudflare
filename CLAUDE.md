@@ -124,13 +124,16 @@ must therefore derive it via `src/lib/session.ts`:
 ```
 sessionId  256-bit random, HttpOnly cookie (opaque — nothing stored, nothing verified)
 threadKey  client-chosen, one per chat thread, not a secret
-threadId   SHA-256(sessionId \0 threadKey)
+threadId   SHA-256(sessionId \0 threadKey), truncated to 128 bits (32 hex chars)
 ```
 
-Two visitors picking the same `threadKey` get different threads, and reaching someone
-else's means guessing 256 bits. The hash matters: `threadId` becomes a container DO name
-and appears in R2 keys and the run log, so it must not carry the session id in recoverable
-form. This is tenant scoping, not authentication — when real accounts arrive, seed the
+The truncation is load-bearing: the id becomes the sandbox container's ID, which
+`@cloudflare/sandbox` caps at 63 chars (a DNS label) — full SHA-256 hex is 64, and the
+rejection only fires at the first `getSandbox()` of a real run. Two visitors picking the
+same `threadKey` get different threads, and reaching someone else's means guessing their
+256-bit session id (or the 128-bit thread id directly). The hash matters: `threadId`
+becomes a container DO name and appears in R2 keys and the run log, so it must not carry
+the session id in recoverable form. This is tenant scoping, not authentication — when real accounts arrive, seed the
 session id from the authenticated user and the rest holds.
 
 `deriveThreadId` returns a **branded `ThreadId`**, so a raw `string` from a request body

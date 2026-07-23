@@ -14,10 +14,12 @@
  *   sessionId  — 256 bits of randomness, set as an HttpOnly cookie. Opaque: the
  *                server stores nothing and verifies nothing about it.
  *   threadKey  — chosen by the client, one per chat thread. Not a secret.
- *   threadId   — SHA-256(sessionId \0 threadKey).
+ *   threadId   — SHA-256(sessionId \0 threadKey), truncated to 128 bits so the
+ *                id fits the sandbox container's 63-char (DNS label) ID limit.
  *
  * Two visitors who pick the same `threadKey` still get different `threadId`s,
- * and reaching someone else's thread means guessing their 256-bit session id.
+ * and reaching someone else's thread means guessing their 256-bit session id
+ * (or the 128-bit thread id itself — either is out of reach).
  *
  * Hashing rather than concatenating matters: the `threadId` becomes a container
  * Durable Object name and appears in R2 keys and the run log, so it must not
@@ -160,6 +162,16 @@ declare const threadIdBrand: unique symbol
 export type ThreadId = string & { readonly [threadIdBrand]: true }
 
 /**
+ * The derived id is the SHA-256 hex TRUNCATED to 32 chars (128 bits). Full
+ * SHA-256 hex is 64 chars, and the id becomes the sandbox container's ID,
+ * which `@cloudflare/sandbox` caps at 63 (a DNS label) — the full digest is
+ * rejected at the first `getSandbox()` call, i.e. only once a real run starts.
+ * 128 bits keeps the id unguessable (the underlying session id is still the
+ * full 256 bits) and cross-tenant collisions are a birthday problem at 2^64.
+ */
+const THREAD_ID_HEX_CHARS = 32
+
+/**
  * Derive the real thread id. NEVER use a client-supplied value directly as a
  * thread id — that is the whole point of this module.
  */
@@ -174,7 +186,7 @@ export async function deriveThreadId(
   const digest = await crypto.subtle.digest('SHA-256', encoded)
   // The sole place the brand is applied: everything else must obtain a ThreadId
   // by calling this function.
-  return toHex(digest) as ThreadId
+  return toHex(digest).slice(0, THREAD_ID_HEX_CHARS) as ThreadId
 }
 
 /**
