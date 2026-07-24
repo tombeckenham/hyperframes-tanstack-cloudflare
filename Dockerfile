@@ -124,75 +124,63 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # The `-version` calls then assert both symlinks resolve AND that the binaries
 # match the image architecture, so a cross-arch mistake surfaces right here
 # instead of halfway through a render.
-RUN npm install -g hyperframes@${HYPERFRAMES_VERSION} ffmpeg-static @ffprobe-installer/ffprobe \
+#
+# ═══ WHY THIS IS ONE GIANT LAYER ═══
+# Four consecutive Workers Builds deploys failed with THREE different
+# corruption signatures, all of the same species: files written by the big
+# npm layer were missing when a LATER layer looked for them —
+#   1. `/bin/sh: 1: hyperframes: not found` (bin gone),
+#   2. the bin left renamed to npm's clobber-temp `.hyperframes-7CVksH4f`
+#      with the lib directory intact,
+#   3. `ENOENT …/hyperframes/node_modules/adm-zip/adm-zip.js` (nested dep
+#      gone) — this one INSIDE `browser ensure`, before any of our repair
+#      logic could matter.
+# Every layer passed its own in-layer assertions; the loss appeared only
+# across the commit boundary, and none of it ever reproduced locally (the
+# same Dockerfile builds clean under emulation every time). That is a
+# builder-side snapshot problem we cannot patch — so we give it as few
+# boundaries as possible: the entire hyperframes toolchain (CLI + ffmpeg +
+# ffprobe + @hyperframes/core + Chrome + agent skills) is installed,
+# repaired, verified, and `sync`ed in ONE RUN. The layers that FOLLOW
+# (bundle.mjs import-graph check, `doctor`, the starter's `hyperframes
+# check`) all exercise this layer's content from the far side of its commit
+# — they are the proof that the committed snapshot survived intact.
+#
+# Sub-steps, in order:
+#   - npm install of all three global packages, then the ffmpeg/ffprobe
+#     symlinks + arch asserts.
+#   - `browser ensure` — bakes chrome-headless-shell so a cold container
+#     never pays a multi-hundred-MB download onto a throwaway disk.
+#   - `skills update` — the agent skills, where the in-container `claude`
+#     CLI auto-discovers them (/root/.claude/skills). Its `npx skills add`
+#     child is what left the bin mid-rename (signature 2), hence the
+#     settle + relink + temp-sweep repair before the final asserts.
+#   - `@hyperframes/core` + the /usr/local/lib/hyperframes node_modules
+#     symlink: what makes `import '@hyperframes/core/compiler'` resolve in
+#     bundle.mjs. NODE_PATH cannot do this job — ESM resolution does not
+#     consult it, and that subpath is exported with an `import` condition
+#     only (a CJS require fails ERR_PACKAGE_PATH_NOT_EXPORTED, which looks
+#     like a missing export but is not).
+#   - `npm cache clean` (~1GB off the image), final CLI asserts, `sync`.
+RUN npm install -g hyperframes@${HYPERFRAMES_VERSION} @hyperframes/core@${HYPERFRAMES_VERSION} ffmpeg-static @ffprobe-installer/ffprobe \
  && ln -sf "$(NODE_PATH="$(npm root -g)" node -p 'require("ffmpeg-static")')" \
       /usr/local/bin/ffmpeg \
  && ln -sf "$(NODE_PATH="$(npm root -g)" node -p 'require("@ffprobe-installer/ffprobe").path')" \
       /usr/local/bin/ffprobe \
  && /usr/local/bin/ffmpeg -version \
  && /usr/local/bin/ffprobe -version \
- && hyperframes --version \
- && npm cache clean --force
-
-# Bake chrome-headless-shell AND the HyperFrames agent skills into the image,
-# in ONE layer. Chrome: without it the first render in a cold container pays a
-# multi-hundred-MB download before drawing a frame — on a disk that is thrown
-# away afterwards. Skills: installed where the in-container `claude` CLI
-# auto-discovers them (/root/.claude/skills); `skills update` resolves the core
-# set for the installed CLI version — /hyperframes is the entry-point workflow,
-# and a chat prompt beginning with a slash invokes a skill directly, since the
-# studio composer's text reaches `claude -p` verbatim.
-#
-# THE BIN-RENAME TRAP, diagnosed off two failed remote builds: `skills
-# update` shells out to `npx skills add …`, and on Workers Builds' native
-# builder that leaves `/usr/local/bin/hyperframes` RENAMED to npm's
-# clobber-temp name (seen live: `.hyperframes-7CVksH4f`, lib directory fully
-# intact) — some npm bin-relink inside the skills flow loses its
-# rename-back on fast native hardware, while the slower emulated local build
-# always wins the race. Every later layer then dies with the misleading
-# `/bin/sh: 1: hyperframes: not found`.
-#
-# So this layer repairs and PROVES itself before it is allowed to commit:
-# settle, relink the bin exactly as npm does (relative symlink), sweep any
-# clobber-temp leftovers, and re-run the CLI — a broken layer fails HERE,
-# with the cause on screen.
-RUN hyperframes browser ensure \
+ && hyperframes browser ensure \
  && HOME=/root hyperframes skills update --json \
  && test -s /root/.claude/skills/hyperframes/SKILL.md \
  && sleep 2 \
  && ln -sf ../lib/node_modules/hyperframes/bin/hyperframes.mjs /usr/local/bin/hyperframes \
  && rm -f /usr/local/bin/.hyperframes-* \
- && hyperframes --version
-
-# `bundleToSingleHtml` — compiles a project into ONE self-contained HTML file,
-# which the host then publishes to R2 so a composition outlives the container
-# that produced it. It ships in `@hyperframes/core`, which the `hyperframes` CLI
-# bundles internally rather than exposing, so it must be installed separately.
-#
-# Deliberately placed AFTER `browser ensure`: that layer downloads
-# chrome-headless-shell, and putting this above it would invalidate the cache
-# and re-download Chrome on every change here.
-#
-# The local `node_modules` symlink is what makes `import
-# '@hyperframes/core/compiler'` resolve. NODE_PATH cannot do this job — it is
-# not consulted by ESM resolution, and that subpath is exported with an `import`
-# condition only (a CJS `require` of it fails with ERR_PACKAGE_PATH_NOT_EXPORTED,
-# which looks like a missing export but is not).
-# The `command -v` guard is the diagnostic for the remote-builder failure
-# described above the browser/skills layer: if the CLI ever vanishes across a
-# layer boundary again, this prints what the filesystem actually holds
-# instead of a bare "not found" three layers later.
-RUN command -v hyperframes || { \
-      echo 'DIAG: hyperframes missing from PATH after previous layer'; \
-      ls -la /usr/local/bin | head -30; \
-      ls "$(npm root -g)" || true; \
-      df -h /; \
-      exit 1; \
-    } \
- && npm install -g @hyperframes/core@${HYPERFRAMES_VERSION} \
  && mkdir -p /usr/local/lib/hyperframes \
  && ln -sfn "$(npm root -g)" /usr/local/lib/hyperframes/node_modules \
- && npm cache clean --force
+ && npm cache clean --force \
+ && hyperframes --version \
+ && sync
+
 COPY container/bundle.mjs /usr/local/lib/hyperframes/bundle.mjs
 RUN node /usr/local/lib/hyperframes/bundle.mjs 2>&1 \
       | grep -q 'usage: bundle.mjs' \
