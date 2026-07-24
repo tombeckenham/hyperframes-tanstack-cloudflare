@@ -44,7 +44,8 @@ ARG HYPERFRAMES_VERSION=0.7.68
 # first time an agent run touches it. `claude --version` asserts that here so a
 # bad install fails the build rather than the run.
 RUN npm install -g @anthropic-ai/claude-code --include=optional \
- && claude --version
+ && claude --version \
+ && npm cache clean --force
 
 # Chromium runtime libraries. `hyperframes` renders frames by driving
 # chrome-headless-shell; the shell binary is self-contained except for these
@@ -130,22 +131,28 @@ RUN npm install -g hyperframes@${HYPERFRAMES_VERSION} ffmpeg-static @ffprobe-ins
       /usr/local/bin/ffprobe \
  && /usr/local/bin/ffmpeg -version \
  && /usr/local/bin/ffprobe -version \
- && hyperframes --version
+ && hyperframes --version \
+ && npm cache clean --force
 
-# Bake chrome-headless-shell into the image. Without this the first render in a
-# cold container pays a multi-hundred-MB download before it draws a single
-# frame — inside a sandbox whose disk is thrown away afterwards, so every cold
-# start would pay it again.
-RUN hyperframes browser ensure
-
-# The HyperFrames agent skills, installed where the in-container `claude` CLI
-# auto-discovers them (/root/.claude/skills). `skills update` resolves the core
+# Bake chrome-headless-shell AND the HyperFrames agent skills into the image,
+# in ONE layer. Chrome: without it the first render in a cold container pays a
+# multi-hundred-MB download before drawing a frame — on a disk that is thrown
+# away afterwards. Skills: installed where the in-container `claude` CLI
+# auto-discovers them (/root/.claude/skills); `skills update` resolves the core
 # set for the installed CLI version — /hyperframes is the entry-point workflow,
-# and a chat prompt beginning with a slash ("/hyperframes …") invokes a skill
-# directly, since the studio composer's text reaches `claude -p` verbatim.
-# Baked at build for the same reason as everything else here: the disk is
-# ephemeral, and a run-time install would be paid on every cold start.
-RUN HOME=/root hyperframes skills update --json \
+# and a chat prompt beginning with a slash invokes a skill directly, since the
+# studio composer's text reaches `claude -p` verbatim.
+#
+# These were two RUN layers. Merged because Workers Builds' remote docker
+# builder failed the second one with `/bin/sh: 1: hyperframes: not found` —
+# twice, deterministically — while the SAME image chain had just run
+# `hyperframes --version` and `hyperframes browser ensure` successfully, and
+# the identical Dockerfile builds clean locally. Whatever corrupts the
+# snapshot at that layer boundary, removing the boundary removes the failure
+# surface; the diagnostic guard on the next hyperframes-using layer below
+# turns any recurrence into evidence instead of a bare "not found".
+RUN hyperframes browser ensure \
+ && HOME=/root hyperframes skills update --json \
  && test -s /root/.claude/skills/hyperframes/SKILL.md
 
 # `bundleToSingleHtml` — compiles a project into ONE self-contained HTML file,
@@ -162,9 +169,21 @@ RUN HOME=/root hyperframes skills update --json \
 # not consulted by ESM resolution, and that subpath is exported with an `import`
 # condition only (a CJS `require` of it fails with ERR_PACKAGE_PATH_NOT_EXPORTED,
 # which looks like a missing export but is not).
-RUN npm install -g @hyperframes/core@${HYPERFRAMES_VERSION} \
+# The `command -v` guard is the diagnostic for the remote-builder failure
+# described above the browser/skills layer: if the CLI ever vanishes across a
+# layer boundary again, this prints what the filesystem actually holds
+# instead of a bare "not found" three layers later.
+RUN command -v hyperframes || { \
+      echo 'DIAG: hyperframes missing from PATH after previous layer'; \
+      ls -la /usr/local/bin | head -30; \
+      ls "$(npm root -g)" || true; \
+      df -h /; \
+      exit 1; \
+    } \
+ && npm install -g @hyperframes/core@${HYPERFRAMES_VERSION} \
  && mkdir -p /usr/local/lib/hyperframes \
- && ln -sfn "$(npm root -g)" /usr/local/lib/hyperframes/node_modules
+ && ln -sfn "$(npm root -g)" /usr/local/lib/hyperframes/node_modules \
+ && npm cache clean --force
 COPY container/bundle.mjs /usr/local/lib/hyperframes/bundle.mjs
 RUN node /usr/local/lib/hyperframes/bundle.mjs 2>&1 \
       | grep -q 'usage: bundle.mjs' \
