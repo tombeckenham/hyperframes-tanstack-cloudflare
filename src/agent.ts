@@ -92,7 +92,7 @@ When the user must choose — interview questions, style directions, approval to
 
 EXCEPTION — fully specified briefs: when a brief already states duration, format, palette, and scene beats (the studio's one-click demo briefs do, and they say so explicitly), skip the interview and every askUser call entirely. Do not confirm, do not offer alternatives; choose tasteful defaults for anything unstated, author immediately, and make your first user-visible milestone the live preview URL.
 
-Work under /workspace. Preview with the recipe's preview steps plus the exposePreview tool; publish results with publishComposition and publishRender — the container disk is ephemeral, so unpublished work is lost.`
+Author in the ready-made project at /workspace/studio — it ships in the image and the studio UI usually has its live preview on screen already, so your edits hot-reload in front of the user (the recipe's scaffold section has the details; do not init a new project unless it says to). Preview with the recipe's preview steps plus the exposePreview tool; publish results with publishComposition and publishRender — the container disk is ephemeral, so unpublished work is lost.`
 
 export const agent = createCloudflareSandboxAgent<AppEnv>({
   adapter: () => claudeCodeText(MODEL),
