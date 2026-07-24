@@ -143,17 +143,26 @@ RUN npm install -g hyperframes@${HYPERFRAMES_VERSION} ffmpeg-static @ffprobe-ins
 # and a chat prompt beginning with a slash invokes a skill directly, since the
 # studio composer's text reaches `claude -p` verbatim.
 #
-# These were two RUN layers. Merged because Workers Builds' remote docker
-# builder failed the second one with `/bin/sh: 1: hyperframes: not found` —
-# twice, deterministically — while the SAME image chain had just run
-# `hyperframes --version` and `hyperframes browser ensure` successfully, and
-# the identical Dockerfile builds clean locally. Whatever corrupts the
-# snapshot at that layer boundary, removing the boundary removes the failure
-# surface; the diagnostic guard on the next hyperframes-using layer below
-# turns any recurrence into evidence instead of a bare "not found".
+# THE BIN-RENAME TRAP, diagnosed off two failed remote builds: `skills
+# update` shells out to `npx skills add …`, and on Workers Builds' native
+# builder that leaves `/usr/local/bin/hyperframes` RENAMED to npm's
+# clobber-temp name (seen live: `.hyperframes-7CVksH4f`, lib directory fully
+# intact) — some npm bin-relink inside the skills flow loses its
+# rename-back on fast native hardware, while the slower emulated local build
+# always wins the race. Every later layer then dies with the misleading
+# `/bin/sh: 1: hyperframes: not found`.
+#
+# So this layer repairs and PROVES itself before it is allowed to commit:
+# settle, relink the bin exactly as npm does (relative symlink), sweep any
+# clobber-temp leftovers, and re-run the CLI — a broken layer fails HERE,
+# with the cause on screen.
 RUN hyperframes browser ensure \
  && HOME=/root hyperframes skills update --json \
- && test -s /root/.claude/skills/hyperframes/SKILL.md
+ && test -s /root/.claude/skills/hyperframes/SKILL.md \
+ && sleep 2 \
+ && ln -sf ../lib/node_modules/hyperframes/bin/hyperframes.mjs /usr/local/bin/hyperframes \
+ && rm -f /usr/local/bin/.hyperframes-* \
+ && hyperframes --version
 
 # `bundleToSingleHtml` — compiles a project into ONE self-contained HTML file,
 # which the host then publishes to R2 so a composition outlives the container
