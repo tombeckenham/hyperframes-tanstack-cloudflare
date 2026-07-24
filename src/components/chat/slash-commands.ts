@@ -1,6 +1,6 @@
 /**
  * The slash commands the composer autocompletes. A message beginning with
- * `/name` reaches the in-sandbox `claude -p` verbatim, which invokes the
+ * `/name` reaches the in-sandbox coding agent verbatim, which invokes the
  * matching skill — so this list MUST mirror the skills baked into the image
  * (the `hyperframes skills update` layer in the Dockerfile). Descriptions are
  * ours; keep them one line.

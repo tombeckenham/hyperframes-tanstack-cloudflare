@@ -4,13 +4,14 @@
  * Worker fetch handler wired together.
  *
  * Execution model is `do-drives` (the default): the coordinator DO runs
- * `chat()` and the container only runs the `claude` CLI. The `colocated` mode
- * would need a second bundled build target inside the image.
+ * `chat()` and the container only runs the selected coding-agent CLI. The
+ * `colocated` mode would need a second bundled build target inside the image.
  *
- * One harness — Claude Code. The upstream example is a three-harness demo; this
- * app is a HyperFrames studio, not a harness comparison. The topology is
- * adapter-agnostic, so Codex/Grok could be added later without touching the
- * wiring below.
+ * Two harnesses — Grok Build and Claude Code. The image ships both CLIs;
+ * selection is host-side from Worker secrets: `XAI_API_KEY` → Grok (wins if
+ * both are set), else `ANTHROPIC_API_KEY` → Claude. See `src/lib/harness.ts`.
+ * Topology is adapter-agnostic: only the adapter and the injected API key
+ * change per run.
  */
 import {
   PREVIEW_GUIDANCE,
@@ -22,7 +23,9 @@ import {
   defineWorkspace,
 } from '@tanstack/ai-sandbox'
 import { claudeCodeText } from '@tanstack/ai-claude-code'
+import { grokBuildText } from '@tanstack/ai-grok-build'
 import { namedCloudflareSandbox } from './sandbox-provider'
+import { harnessSecrets, resolveHarness } from './lib/harness'
 import { hyperframesRecipe } from './tools/recipe'
 import { askUserTool } from './tools/ask-user'
 // Ours, not the package's: verifies the tunnel end to end and re-establishes
@@ -34,40 +37,38 @@ import {
   publishRenderTool,
 } from './tools/publish'
 import type { SandboxAgentEnv } from '@tanstack/ai-sandbox-cloudflare/agent'
+import type { HarnessName } from './lib/harness'
 
 /**
  * The env shape the agent expects: the package's harness-agnostic
  * `SandboxAgentEnv` (which contributes `RUN_COORDINATOR`, `Sandbox`,
  * `PUBLIC_HOSTNAME?` and `PREVIEW_HOSTNAME?`) plus this app's own bindings.
+ * Keys are optional on the type; {@link resolveHarness} fails clearly at run
+ * time if neither is set.
  */
 export interface AppEnv extends SandboxAgentEnv {
-  /** Secret. `wrangler secret put ANTHROPIC_API_KEY`; `.dev.vars` locally. */
+  /** Secret. Claude Code harness. Used when `XAI_API_KEY` is unset. */
   ANTHROPIC_API_KEY?: string
-  /** Rendered MP4s and bundled composition HTML. Used from Phase 3 on. */
+  /** Secret. Grok Build harness. Wins over `ANTHROPIC_API_KEY` when both set. */
+  XAI_API_KEY?: string
+  /** Rendered MP4s and bundled composition HTML. */
   RENDERS: R2Bucket
 }
 
-/**
- * The model the in-sandbox `claude` CLI runs. The bare alias is deliberate —
- * the CLI resolves it to the current Sonnet, so the studio follows model
- * releases without a redeploy.
- */
-const MODEL = 'sonnet'
+/** Claude Code model alias — the CLI resolves it to the current Sonnet. */
+const CLAUDE_MODEL = 'sonnet'
 
-/**
- * Fail loudly and early when the key is missing. `createSecrets` requires
- * `Record<string, string>`, so this guard is what narrows `string | undefined`
- * — but the real reason it exists is that without it a keyless run starts and
- * then dies deep inside the CLI with an opaque error.
- */
-function requireAnthropicKey(env: AppEnv): string {
-  const key = env.ANTHROPIC_API_KEY
-  if (key === undefined || key === '') {
-    throw new Error(
-      'ANTHROPIC_API_KEY is not set. Add it to .dev.vars for local dev, or run `wrangler secret put ANTHROPIC_API_KEY` for a deployed Worker.',
-    )
+/** Default Grok Build model (matches the TanStack sandbox-cloudflare example). */
+const GROK_MODEL = 'composer-2.5'
+
+function buildAdapter(harness: HarnessName) {
+  if (harness === 'grok') {
+    return grokBuildText(GROK_MODEL, {
+      protocol: 'acp',
+      transport: 'auto',
+    })
   }
-  return key
+  return claudeCodeText(CLAUDE_MODEL)
 }
 
 /**
@@ -84,9 +85,9 @@ const STUDIO_ROLE = `You are the authoring agent of a HyperFrames video studio. 
 
 EVERY user message is a video brief — there is no other kind of message here. A bare topic or question ("Explain relativity", "how do jet engines work") is a brief for an EXPLAINER VIDEO about that topic, not a knowledge question: never answer it in prose. When the /hyperframes workflow's routing offers a "not a video request" exit, that exit does not apply in this studio — pick the closest video route (usually the explainer) instead, and use askUser to settle direction (length, tone, style), never to ask whether a video is wanted at all.
 
-This sandbox has the complete HyperFrames toolchain preinstalled: the \`hyperframes\` CLI, Node, Chromium, ffmpeg, and the HyperFrames agent skills (in ~/.claude/skills — /hyperframes is the entry-point workflow for any video request). You author compositions here yourself — never claim you lack access to HyperFrames.
+This sandbox has the complete HyperFrames toolchain preinstalled: the \`hyperframes\` CLI, Node, Chromium, ffmpeg, and the HyperFrames agent skills (under ~/.claude/skills and ~/.grok/skills — /hyperframes is the entry-point workflow for any video request). You author compositions here yourself — never claim you lack access to HyperFrames.
 
-YOUR VERY FIRST ACTION in a new thread — before replying, before asking clarifying questions, before anything else — is to load the /hyperframes skill (via your Skill tool). It is the mandatory entry point: it routes the request, and it decides what to ask the user. "First authoring step" is NOT the trigger; the first user message is. Then call the hyperframesRecipe tool with section "all" for the rules SPECIFIC TO THIS SANDBOX — ports, preview, publishing. Where skill and recipe disagree, the recipe wins: it reflects the CLI version installed HERE.
+YOUR VERY FIRST ACTION in a new thread — before replying, before asking clarifying questions, before anything else — is to load the /hyperframes skill (via your Skill tool, or by reading the skill files if that is how you load skills). It is the mandatory entry point: it routes the request, and it decides what to ask the user. "First authoring step" is NOT the trigger; the first user message is. Then call the hyperframesRecipe tool with section "all" for the rules SPECIFIC TO THIS SANDBOX — ports, preview, publishing. Where skill and recipe disagree, the recipe wins: it reflects the CLI version installed HERE.
 
 When the user must choose — interview questions, style directions, approval to render — ask with the askUser tool (one question per turn, then end your turn and wait), never with a prose list of options.
 
@@ -95,7 +96,8 @@ EXCEPTION — fully specified briefs: when a brief already states duration, form
 Author in the ready-made project at /workspace/studio — it ships in the image and the studio UI usually has its live preview on screen already, so your edits hot-reload in front of the user (the recipe's scaffold section has the details; do not init a new project unless it says to). Preview with the recipe's preview steps plus the exposePreview tool; publish results with publishComposition and publishRender — the container disk is ephemeral, so unpublished work is lost.`
 
 export const agent = createCloudflareSandboxAgent<AppEnv>({
-  adapter: () => claudeCodeText(MODEL),
+  // Resolved per run from Worker secrets (XAI wins if both are set).
+  adapter: (_input, env) => buildAdapter(resolveHarness(env)),
 
   // Role first, then the app-agnostic transport guidance ("bind wide + allow
   // all hosts", so the quick-tunnel hostname is accepted).
@@ -126,13 +128,14 @@ export const agent = createCloudflareSandboxAgent<AppEnv>({
       // deploy if we called it eagerly here.
       provider: namedCloudflareSandbox(env.Sandbox, input.threadId),
       workspace: defineWorkspace({
-        // Nothing to clone — the container image already ships the `claude`
-        // CLI and the whole HyperFrames toolchain.
+        // Nothing to clone — the container image already ships both harness
+        // CLIs and the whole HyperFrames toolchain.
         source: { type: 'none' },
-        // Every container carries this key, and the container is pinned to
-        // `threadId` — so whoever can NAME a threadId can reach the workspace
-        // holding it. CLAUDE.md: "do not put one user's secret in a sandbox
-        // another user can reach; the sandbox runs LLM-authored code."
+        // Every container carries the selected harness key, and the container
+        // is pinned to `threadId` — so whoever can NAME a threadId can reach
+        // the workspace holding it. CLAUDE.md: "do not put one user's secret
+        // in a sandbox another user can reach; the sandbox runs LLM-authored
+        // code."
         //
         // Two things keep that closed, and both must stay true:
         //   1. `/runs` is not routed publicly (src/server.ts). The package's
@@ -140,9 +143,9 @@ export const agent = createCloudflareSandboxAgent<AppEnv>({
         //   2. `threadId` is derived, never client-supplied — see
         //      src/lib/session.ts. `/api/run` MUST use `deriveThreadId`; a raw
         //      value from the request body reopens the hole.
-        secrets: createSecrets({
-          ANTHROPIC_API_KEY: requireAnthropicKey(env),
-        }),
+        //
+        // Only the active harness key is injected (never both).
+        secrets: createSecrets(harnessSecrets(env)),
       }),
       // One sandbox per thread, so a follow-up message resumes the same
       // workspace and the compositions the agent already authored.

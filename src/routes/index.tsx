@@ -76,11 +76,12 @@ function Studio() {
 
   const threadKey = thread ?? ''
 
-  // The claude-code session echo (src/lib/claude-session.ts): remembered per
+  // The harness session echo (src/lib/claude-session.ts): remembered per
   // thread for the life of the page, sent back so the coordinator can
   // `--resume` and the agent keeps its working context across turns.
-  // Deliberately NOT persisted: the session lives on the container's
-  // ephemeral disk, so a saved id would go stale across cold starts.
+  // Accepts both claude-code and grok-build session events. Deliberately NOT
+  // persisted: the session lives on the container's ephemeral disk, so a
+  // saved id would go stale across cold starts.
   const [agentSessionId, setAgentSessionId] = useState<string | undefined>(
     undefined,
   )

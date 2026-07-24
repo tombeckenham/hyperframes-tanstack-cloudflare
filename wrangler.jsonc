@@ -73,8 +73,9 @@
   //   tunnel (*.trycloudflare.com), not exposePort, so no wildcard DNS is
   //   required.
   //
-  // The harness key is a SECRET, not a var:
-  //   wrangler secret put ANTHROPIC_API_KEY
+  // Harness keys are SECRETS, not vars (src/lib/harness.ts):
+  //   wrangler secret put XAI_API_KEY          # Grok Build (wins if both set)
+  //   wrangler secret put ANTHROPIC_API_KEY    # Claude Code
 
   "observability": { "enabled": true },
 }
