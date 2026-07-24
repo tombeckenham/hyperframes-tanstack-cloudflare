@@ -37,6 +37,27 @@ FROM docker.io/cloudflare/sandbox:0.12.4
 # both take this same version.
 ARG HYPERFRAMES_VERSION=0.7.68
 
+# KILL THE CLI'S SILENT AUTO-UPDATER BEFORE ITS FIRST INVOCATION. The
+# hyperframes CLI (utils/autoUpdate.ts) may spawn a DETACHED
+# `npm install -g hyperframes@latest` on any run and exit without waiting.
+# Inside a docker build that is lethal: the layer commits while the updater
+# is mid-reinstall over the global tree — which is exactly what four
+# consecutive Workers Builds deploys died of, each with a different face of
+# the same race (`hyperframes: not found` right after a successful run in
+# the SAME shell; the bin caught renamed to npm's clobber-temp
+# `.hyperframes-7CVksH4f`; `ENOENT …/adm-zip.js` when the updater swapped
+# node_modules under a lazily-imported module mid-run). Local emulated
+# builds never hit it — slow enough that the registry check never spawned
+# the child before exit.
+#
+# As image ENV these also stop the updater INSIDE the deployed sandbox,
+# which is independently required: the image pins ${HYPERFRAMES_VERSION}
+# because src/tools/recipe.ts is verified against exactly that CLI, and a
+# silent runtime upgrade would falsify the recipe and could corrupt the
+# toolchain mid agent-run. Both variables are the CLI's own opt-outs.
+ENV HYPERFRAMES_NO_AUTO_INSTALL=1 \
+    HYPERFRAMES_NO_UPDATE_CHECK=1
+
 # Claude Code CLI. `node` + `npm` are already on the base image.
 # `--include=optional` is REQUIRED, not a nicety: the CLI's native binary ships
 # as a platform-specific OPTIONAL dependency, and a plain `-g` install can skip
@@ -126,25 +147,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # instead of halfway through a render.
 #
 # ═══ WHY THIS IS ONE GIANT LAYER ═══
-# Four consecutive Workers Builds deploys failed with THREE different
-# corruption signatures, all of the same species: files written by the big
-# npm layer were missing when a LATER layer looked for them —
-#   1. `/bin/sh: 1: hyperframes: not found` (bin gone),
-#   2. the bin left renamed to npm's clobber-temp `.hyperframes-7CVksH4f`
-#      with the lib directory intact,
-#   3. `ENOENT …/hyperframes/node_modules/adm-zip/adm-zip.js` (nested dep
-#      gone) — this one INSIDE `browser ensure`, before any of our repair
-#      logic could matter.
-# Every layer passed its own in-layer assertions; the loss appeared only
-# across the commit boundary, and none of it ever reproduced locally (the
-# same Dockerfile builds clean under emulation every time). That is a
-# builder-side snapshot problem we cannot patch — so we give it as few
-# boundaries as possible: the entire hyperframes toolchain (CLI + ffmpeg +
-# ffprobe + @hyperframes/core + Chrome + agent skills) is installed,
-# repaired, verified, and `sync`ed in ONE RUN. The layers that FOLLOW
-# (bundle.mjs import-graph check, `doctor`, the starter's `hyperframes
-# check`) all exercise this layer's content from the far side of its commit
-# — they are the proof that the committed snapshot survived intact.
+# Written while chasing what turned out to be the CLI's detached
+# auto-updater (see the ENV block up top — that is the actual fix). The
+# corruption it caused always surfaced across layer-commit boundaries, so
+# the whole toolchain (CLI + ffmpeg + ffprobe + @hyperframes/core + Chrome
+# + agent skills) was fused into ONE RUN, verified, and `sync`ed. Kept
+# after the root-cause fix: fewer boundaries around a multi-GB npm tree is
+# strictly less surface for this class of failure, and the layers that
+# FOLLOW (bundle.mjs import-graph check, `doctor`, the starter's
+# `hyperframes check`) exercise this content from the far side of the
+# commit — standing proof the committed snapshot is intact. The
+# settle/relink/temp-sweep lines mid-layer are belt-and-braces from the
+# same investigation.
 #
 # Sub-steps, in order:
 #   - npm install of all three global packages, then the ffmpeg/ffprobe
