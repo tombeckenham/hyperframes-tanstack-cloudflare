@@ -4,18 +4,27 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Status
 
-**Phases 0–3 of `PLAN.md` are merged.** Scaffold, strict toolchain, Cloudflare + agent
-wiring, the sandbox container image, the host tools and the R2 lane all exist and are
-green on CI.
+**All phases of `PLAN.md` are shipped and the app is live.** The user-facing
+studio ("Hyperframes Web") exists end to end: chat transcript + composer with
+one-click demo briefs, a Player tab that plays the thread's live composition
+through the same-origin `/api/player` proxy (auto-refreshing when an agent
+turn ends), a Renders tab over R2, and a header button that opens the
+sandbox's full `hyperframes preview` studio ("Hyperframes Studio") in its own
+window via a quick tunnel. The preview sandbox boots on page load
+(`/api/preview` ensure/probe, resume UX for slept containers) and serves a
+preset 5-second starter composition baked into the image at
+`/workspace/studio` — the directory the agent authors in.
 
-**Phase 4 (UI) has not started**, and that is the whole user-facing half: there is no
-chat transcript, no composer, no preview pane, and no `src/routes/api.run.ts`. So there
-is currently **no way to trigger an agent run** — `src/routes/index.tsx` is still the
-scaffold page, and `/runs` is deliberately unrouted (see below). Nothing has driven a
-real run end to end yet, so expect first-run integration bugs in the bridge and the
-preview tunnel; `PLAN.md` risk 5 says the same.
-
-Phase 5 (deploy, README) has not started.
+**Deploys are via the connected Workers Builds pipeline**: pushing `main`
+builds and deploys everything, including the container image. Two pipeline
+facts that cost real debugging time: branch builds run
+`wrangler versions upload` and SKIP the docker build entirely (a green
+branch build proves nothing about the Dockerfile), and the container image
+rolls out minutes after the Worker (old threads stay pinned to old-image
+containers). The Dockerfile disables the hyperframes CLI's detached
+auto-updater (`HYPERFRAMES_NO_AUTO_INSTALL=1`) — it spawns a background
+`npm install -g` on any invocation, which corrupted five consecutive image
+builds before it was found.
 
 Read `PLAN.md` for the build order and the rationale behind the decisions this file
 summarises — but treat it as the ORIGINAL plan, not current truth. Several of its
@@ -27,9 +36,9 @@ actually installed in the image.
 
 A HyperFrames authoring studio: a **TanStack Start** app on **Cloudflare Workers** where
 the user chats with a coding agent that authors HyperFrames HTML video compositions
-**inside a Cloudflare Sandbox container**, previews them live, and renders them to MP4.
+**inside a Cloudflare Sandbox container**, plays them live, and renders them to MP4.
 
-One `wrangler deploy` ships everything — SSR UI, agent Durable Objects, and the
+One deploy ships everything — SSR UI, agent Durable Objects, and the
 container — as a single Worker.
 
 ## Commands
@@ -174,7 +183,13 @@ publishing renders to R2, handing the agent the HyperFrames recipe.
   (`*.trycloudflare.com`) opened by `sandbox.tunnels.get(port)`. Needs no wildcard DNS,
   works locally and deployed. Do **not** switch to `exposePort` + `proxyToSandbox` in
   dev: Vite's middleware hijacks the preview's `/@vite/client` and `/src/*` requests and
-  breaks the page.
+  breaks the page. Tunnel verification runs IN-CONTAINER (`src/lib/preview-tunnel.ts`):
+  the Worker's own resolver cannot be trusted to see fresh trycloudflare hostnames, and
+  `sandbox.containerFetch` hangs over the rpc stub in local dev.
+- **Player** (browser → live composition): `GET /api/player` proxies the preview
+  server's bundled-composition route to OUR origin via in-container curl over exec
+  stdout. Same-origin is load-bearing — `<hyperframes-player>` drives compositions
+  through `contentWindow`, which a cross-origin tunnel src forbids (renders black).
 
 Tunnels require `SANDBOX_TRANSPORT: "rpc"`; on the default `http` transport
 `sandbox.tunnels` throws. Every `getSandbox()` call for an id must pass the same
