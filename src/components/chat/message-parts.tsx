@@ -22,6 +22,7 @@ import {
 } from '@/components/ui/collapsible'
 import { Spinner } from '@/components/ui/spinner'
 import { extractToolError, extractToolUrl } from '@/lib/tool-urls'
+import { toolCallSummary } from '@/lib/tool-summary'
 import { parseAskUserArguments } from '@/lib/ask-user'
 import { QuestionCard } from './question-card'
 import type { MessagePart, ToolResultPart } from '@tanstack/ai-client'
@@ -70,6 +71,12 @@ function ToolCallBubble({
   // result with state still 'complete' — without this, a failed publish
   // renders as a neutral collapsed row and the reason stays hidden.
   const toolError = useMemo(() => extractToolError(output), [output])
+  // "Bash" alone says nothing; "Bash npx hyperframes check" says what is
+  // happening without expanding the row. Null while arguments still stream.
+  const summary = useMemo(
+    () => toolCallSummary(part.name, args),
+    [part.name, args],
+  )
   const failed =
     part.state === 'error' || result?.state === 'error' || toolError !== null
 
@@ -91,8 +98,13 @@ function ToolCallBubble({
               className="size-3.5 shrink-0 transition-transform data-[open]:rotate-90"
               data-open={open ? '' : undefined}
             />
-            <span className="font-medium">{part.name}</span>
-            {running ? <Spinner className="size-3.5" /> : null}
+            <span className="shrink-0 font-medium">{part.name}</span>
+            {summary !== null ? (
+              <span className="min-w-0 flex-1 truncate text-muted-foreground">
+                {summary}
+              </span>
+            ) : null}
+            {running ? <Spinner className="size-3.5 shrink-0" /> : null}
             {failed ? (
               <span className="max-w-64 truncate text-destructive">
                 {toolError ?? 'failed'}

@@ -1,8 +1,7 @@
 /**
  * The studio. Two layouts over one state:
  *   - desktop (md+): transcript + composer left, preview pane right, resizable.
- *   - mobile: one column, top-level Chat | Preview tabs — the preview pane
- *     keeps its own Live/Player/Renders tabs inside the Preview tab.
+ *   - mobile: one column, one flat tab row: Chat | Player | Renders.
  *
  * Thread identity, client side: the URL search param `thread` is the
  * `threadKey` — client-chosen, one per chat thread, NOT a secret and NOT a
@@ -14,7 +13,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 import { fetchServerSentEvents, useChat } from '@tanstack/ai-react'
-import { MoonIcon, PlusIcon, SunIcon } from 'lucide-react'
+import {
+  ExternalLinkIcon,
+  Loader2Icon,
+  MoonIcon,
+  PlusIcon,
+  SunIcon,
+} from 'lucide-react'
 import { z } from 'zod'
 import {
   ResizableHandle,
@@ -25,9 +30,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Transcript } from '@/components/chat/transcript'
 import { Composer } from '@/components/chat/composer'
+import { PlayerTab } from '@/components/studio/player-tab'
+import { RendersTab } from '@/components/studio/preview-pane'
 import { latestArtifactUrls } from '@/lib/tool-urls'
 import { localChatPersistence } from '@/lib/chat-persistence'
 import { readClaudeSessionId } from '@/lib/claude-session'
+import { usePreviewSession } from '@/hooks/use-preview-session'
 import type { StreamChunk } from '@tanstack/ai'
 import { PreviewPane } from '@/components/studio/preview-pane'
 import { toggleTheme } from '@/lib/theme'
@@ -103,10 +111,19 @@ function Studio() {
     onChunk: handleChunk,
   })
 
-  const { previewUrl, compositionUrl } = useMemo(
-    () => latestArtifactUrls(messages),
-    [messages],
-  )
+  const { previewUrl } = useMemo(() => latestArtifactUrls(messages), [messages])
+
+  // The live-preview session: boots the sandbox on load, polls tunnel health,
+  // exposes resume, and refreshes the player when a run finishes. Shared by
+  // the header's "Hyperframes Studio" button and the Player tab.
+  const session = usePreviewSession(threadKey, previewUrl, isLoading)
+  // A NAMED window: repeated clicks refocus/reuse the same "Hyperframes
+  // Studio" window instead of piling up tabs.
+  const openStudio = useCallback(() => {
+    if (session.url !== null) {
+      window.open(session.url, 'hyperframes-studio', 'noopener')
+    }
+  }, [session.url])
 
   const handleSend = useCallback(
     (text: string) => {
@@ -136,36 +153,52 @@ function Studio() {
     />
   )
   const preview = (
-    <PreviewPane
-      previewUrl={previewUrl}
-      compositionUrl={compositionUrl}
-      threadKey={threadKey}
-    />
+    <PreviewPane key={threadKey} session={session} threadKey={threadKey} />
+  )
+
+  const headerActions = (
+    <div className="flex items-center gap-1">
+      {/* Opens the sandbox's full `hyperframes preview` studio in its own
+          window — deliberately NOT embedded in an iframe; it is a whole app
+          and deserves a whole window. */}
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={openStudio}
+        disabled={session.url === null || session.stopped}
+      >
+        {session.starting ? (
+          <Loader2Icon className="animate-spin" />
+        ) : (
+          <ExternalLinkIcon />
+        )}
+        Hyperframes Studio
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        onClick={startNewThread}
+        aria-label="New thread"
+      >
+        <PlusIcon />
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        onClick={toggleTheme}
+        aria-label="Toggle theme"
+      >
+        <SunIcon className="dark:hidden" />
+        <MoonIcon className="hidden dark:block" />
+      </Button>
+    </div>
   )
 
   return (
     <div className="flex h-dvh flex-col">
       <header className="flex items-center justify-between border-b border-border px-4 py-2">
-        <h1 className="text-sm font-semibold">HyperFrames Studio</h1>
-        <div className="flex items-center gap-1">
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={startNewThread}
-            aria-label="New thread"
-          >
-            <PlusIcon />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={toggleTheme}
-            aria-label="Toggle theme"
-          >
-            <SunIcon className="dark:hidden" />
-            <MoonIcon className="hidden dark:block" />
-          </Button>
-        </div>
+        <h1 className="text-sm font-semibold">Hyperframes Web</h1>
+        {headerActions}
       </header>
       {isDesktop ? (
         /* react-resizable-panels v4: string sizes are percentages; numbers
@@ -180,16 +213,22 @@ function Studio() {
           </ResizablePanel>
         </ResizablePanelGroup>
       ) : (
+        /* ONE flat tab row on mobile — Chat | Player | Renders — not a
+           Preview tab that hides a second tab row inside itself. */
         <Tabs defaultValue="chat" className="flex min-h-0 flex-1 flex-col">
           <TabsList className="mx-3 mt-2 self-start">
             <TabsTrigger value="chat">Chat</TabsTrigger>
-            <TabsTrigger value="preview">Preview</TabsTrigger>
+            <TabsTrigger value="player">Player</TabsTrigger>
+            <TabsTrigger value="renders">Renders</TabsTrigger>
           </TabsList>
           <TabsContent value="chat" className="min-h-0 flex-1">
             {chat}
           </TabsContent>
-          <TabsContent value="preview" className="min-h-0 flex-1">
-            {preview}
+          <TabsContent value="player" className="min-h-0 flex-1">
+            <PlayerTab session={session} threadKey={threadKey} />
+          </TabsContent>
+          <TabsContent value="renders" className="min-h-0 flex-1">
+            <RendersTab threadKey={threadKey} />
           </TabsContent>
         </Tabs>
       )}

@@ -210,6 +210,32 @@ RUN hyperframes doctor --json > /tmp/doctor.json \
     " \
  && rm /tmp/doctor.json
 
+# The baked starter project: a preset 5-second "Hyperframes" intro animation,
+# so `hyperframes preview` has something worth LOOKING AT from the moment the
+# container boots — before the agent has authored a single line. (The blank
+# example's black frame read as "broken".) The studio UI's `/api/preview`
+# ensure endpoint starts the preview server from /workspace/studio on page
+# load, and the agent authors in that same directory (src/tools/recipe.ts),
+# so the running preview hot-reloads into their work.
+#
+# Two copies on purpose:
+#   /opt/studio        — the pristine template. Never served, never edited.
+#   /workspace/studio  — the working copy the preview serves and the agent
+#                        edits. If anything ever recreates /workspace without
+#                        it, the ensure endpoint restores it from /opt/studio.
+#
+# `--example blank` is REQUIRED: docker build is non-TTY and non-TTY `init`
+# refuses to guess. The scaffold supplies the project shell (hyperframes.json,
+# package.json); our starter composition then replaces its index.html, and
+# `hyperframes check` gates the result — a contract mistake in the starter
+# fails THIS build, not a visitor's first impression.
+RUN cd /opt && hyperframes init studio --non-interactive --example blank \
+ && test -s /opt/studio/index.html
+COPY container/starter-index.html /opt/studio/index.html
+RUN cd /opt/studio && hyperframes check \
+ && mkdir -p /workspace \
+ && cp -a /opt/studio /workspace/studio
+
 # `hyperframes preview` has NO `--host` flag. From the CLI source:
 #
 #   const host = bindHost ?? (process.env.HYPERFRAMES_PREVIEW_HOST?.trim() || "127.0.0.1")

@@ -11,6 +11,8 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiArtifactsRouteImport } from './routes/api.artifacts'
+import { Route as ApiPlayerRouteImport } from './routes/api.player'
+import { Route as ApiPreviewRouteImport } from './routes/api.preview'
 import { Route as ApiRunRouteImport } from './routes/api.run'
 import { Route as PSplatRouteImport } from './routes/p.$'
 import { Route as RSplatRouteImport } from './routes/r.$'
@@ -24,6 +26,16 @@ const IndexRoute = IndexRouteImport.update({
 const ApiArtifactsRoute = ApiArtifactsRouteImport.update({
   id: '/api/artifacts',
   path: '/api/artifacts',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPlayerRoute = ApiPlayerRouteImport.update({
+  id: '/api/player',
+  path: '/api/player',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPreviewRoute = ApiPreviewRouteImport.update({
+  id: '/api/preview',
+  path: '/api/preview',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiRunRoute = ApiRunRouteImport.update({
@@ -50,6 +62,8 @@ const ApiUploadsRunIdNameRoute = ApiUploadsRunIdNameRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/api/artifacts': typeof ApiArtifactsRoute
+  '/api/player': typeof ApiPlayerRoute
+  '/api/preview': typeof ApiPreviewRoute
   '/api/run': typeof ApiRunRoute
   '/p/$': typeof PSplatRoute
   '/r/$': typeof RSplatRoute
@@ -58,6 +72,8 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/api/artifacts': typeof ApiArtifactsRoute
+  '/api/player': typeof ApiPlayerRoute
+  '/api/preview': typeof ApiPreviewRoute
   '/api/run': typeof ApiRunRoute
   '/p/$': typeof PSplatRoute
   '/r/$': typeof RSplatRoute
@@ -67,6 +83,8 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/api/artifacts': typeof ApiArtifactsRoute
+  '/api/player': typeof ApiPlayerRoute
+  '/api/preview': typeof ApiPreviewRoute
   '/api/run': typeof ApiRunRoute
   '/p/$': typeof PSplatRoute
   '/r/$': typeof RSplatRoute
@@ -77,6 +95,8 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/api/artifacts'
+    | '/api/player'
+    | '/api/preview'
     | '/api/run'
     | '/p/$'
     | '/r/$'
@@ -85,6 +105,8 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/api/artifacts'
+    | '/api/player'
+    | '/api/preview'
     | '/api/run'
     | '/p/$'
     | '/r/$'
@@ -93,6 +115,8 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/api/artifacts'
+    | '/api/player'
+    | '/api/preview'
     | '/api/run'
     | '/p/$'
     | '/r/$'
@@ -102,6 +126,8 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ApiArtifactsRoute: typeof ApiArtifactsRoute
+  ApiPlayerRoute: typeof ApiPlayerRoute
+  ApiPreviewRoute: typeof ApiPreviewRoute
   ApiRunRoute: typeof ApiRunRoute
   PSplatRoute: typeof PSplatRoute
   RSplatRoute: typeof RSplatRoute
@@ -122,6 +148,20 @@ declare module '@tanstack/react-router' {
       path: '/api/artifacts'
       fullPath: '/api/artifacts'
       preLoaderRoute: typeof ApiArtifactsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/player': {
+      id: '/api/player'
+      path: '/api/player'
+      fullPath: '/api/player'
+      preLoaderRoute: typeof ApiPlayerRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/preview': {
+      id: '/api/preview'
+      path: '/api/preview'
+      fullPath: '/api/preview'
+      preLoaderRoute: typeof ApiPreviewRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/run': {
@@ -158,6 +198,8 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ApiArtifactsRoute: ApiArtifactsRoute,
+  ApiPlayerRoute: ApiPlayerRoute,
+  ApiPreviewRoute: ApiPreviewRoute,
   ApiRunRoute: ApiRunRoute,
   PSplatRoute: PSplatRoute,
   RSplatRoute: RSplatRoute,

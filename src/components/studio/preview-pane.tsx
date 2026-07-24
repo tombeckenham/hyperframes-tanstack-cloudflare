@@ -1,21 +1,22 @@
 /**
- * The right pane: three tabs over the three artifact surfaces.
+ * The right pane: two tabs over the thread's two video surfaces.
  *
- *   Live    — the sandbox's `hyperframes preview` studio through its Cloudflare
- *             quick tunnel (`*.trycloudflare.com`), a plain iframe.
- *   Player  — the last published composition (`/p/<key>`) inside
- *             `<hyperframes-player>`. The `/p/*` response carries
- *             `Content-Security-Policy: sandbox allow-scripts`, so the document
- *             keeps an opaque origin regardless of the player's inner iframe
- *             attributes — the CSP can only be tightened by an embedder, never
- *             loosened.
- *   Renders — the thread's published MP4s out of R2, via `/api/artifacts`.
+ *   Player  — the LIVE composition (authored, not yet rendered) played in
+ *             `<hyperframes-player>` straight off the preview server's tunnel;
+ *             also owns the session's starting/stopped/resume states — see
+ *             src/components/studio/player-tab.tsx. The full studio UI is not
+ *             embedded anywhere; the header's "Preview Studio" button opens it
+ *             in its own window.
+ *   Renders — what the thread has published to R2, via `/api/artifacts`:
+ *             MP4s inline, bundled compositions (`/p/<key>`) as links.
  */
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { RefreshCwIcon } from 'lucide-react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
+import { PlayerTab } from '@/components/studio/player-tab'
+import type { PreviewSession } from '@/hooks/use-preview-session'
 import type { ArtifactList } from '@/routes/api.artifacts'
 
 function Placeholder({ children }: { children: string }) {
@@ -34,7 +35,7 @@ async function fetchArtifacts(threadKey: string): Promise<ArtifactList> {
   return (await response.json()) as ArtifactList
 }
 
-function RendersTab({ threadKey }: { threadKey: string }) {
+export function RendersTab({ threadKey }: { threadKey: string }) {
   const query = useQuery({
     queryKey: ['artifacts', threadKey],
     queryFn: () => fetchArtifacts(threadKey),
@@ -119,71 +120,20 @@ function RendersTab({ threadKey }: { threadKey: string }) {
 }
 
 export function PreviewPane({
-  previewUrl,
-  compositionUrl,
+  session,
   threadKey,
 }: {
-  previewUrl: string | null
-  compositionUrl: string | null
+  session: PreviewSession
   threadKey: string
 }) {
-  // The custom element touches `customElements` at registration, so it must
-  // only ever load in the browser — never during SSR module evaluation. If the
-  // chunk fails to load, the element would sit inert and the tab would show
-  // black nothing — surface that instead.
-  const [playerFailed, setPlayerFailed] = useState(false)
-  useEffect(() => {
-    import('@hyperframes/player').catch(() => {
-      setPlayerFailed(true)
-    })
-  }, [])
-
   return (
-    <Tabs defaultValue="live" className="flex h-full min-h-0 flex-col">
+    <Tabs defaultValue="player" className="flex h-full min-h-0 flex-col">
       <TabsList className="mx-3 mt-3 self-start">
-        <TabsTrigger value="live">Live</TabsTrigger>
         <TabsTrigger value="player">Player</TabsTrigger>
         <TabsTrigger value="renders">Renders</TabsTrigger>
       </TabsList>
-      <TabsContent value="live" className="min-h-0 flex-1">
-        {previewUrl === null ? (
-          <Placeholder>
-            No live preview yet. Once the agent starts `hyperframes preview` in
-            the sandbox, its tunnel appears here.
-          </Placeholder>
-        ) : (
-          // No sandbox attribute: the tunnel is a different site entirely
-          // (*.trycloudflare.com), so the browser's origin isolation already
-          // applies — and the preview studio is a full Vite app that needs
-          // scripts AND its own origin, the exact combination the lint rule
-          // (rightly, for same-origin embeds) refuses inside `sandbox`.
-          // oxlint-disable-next-line react/iframe-missing-sandbox
-          <iframe
-            src={previewUrl}
-            title="Live sandbox preview"
-            className="size-full border-0"
-          />
-        )}
-      </TabsContent>
       <TabsContent value="player" className="min-h-0 flex-1">
-        {playerFailed ? (
-          <Placeholder>
-            The player script failed to load — reload the page to retry.
-          </Placeholder>
-        ) : compositionUrl === null ? (
-          <Placeholder>
-            No published composition yet. The agent publishes one with the
-            publishComposition tool.
-          </Placeholder>
-        ) : (
-          <div className="flex size-full items-center justify-center bg-black/90 p-3">
-            <hyperframes-player
-              src={compositionUrl}
-              controls
-              className="max-h-full w-full"
-            />
-          </div>
-        )}
+        <PlayerTab session={session} threadKey={threadKey} />
       </TabsContent>
       <TabsContent value="renders" className="min-h-0 flex-1">
         <RendersTab threadKey={threadKey} />

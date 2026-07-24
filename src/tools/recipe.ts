@@ -13,17 +13,30 @@ import { toolDefinition } from '@tanstack/ai'
 import { z } from 'zod'
 
 const scaffold = `
-Scaffold with the CLI; never hand-roll the project layout.
+DO NOT scaffold — a ready-made project already exists at /workspace/studio
+(baked into this image with a preset 5s "Hyperframes" intro animation as its
+index.html), and the studio UI has usually ALREADY started
+\`hyperframes preview\` from it and shown the user its tunnel. AUTHOR THERE:
+cd /workspace/studio and REPLACE the intro with the user's brief, editing
+index.html in place — the running preview hot-reloads your work into the pane
+the user is looking at. The intro is placeholder content, not something to
+preserve or build on. Every command below is run from that directory.
+
+If /workspace/studio is somehow missing, restore it from the pristine
+template: cp -a /opt/studio /workspace/studio
+
+For a different frame size, edit the root's data-width/data-height (and the
+matching CSS pixel sizes) in place — do not re-init for that.
+
+Only init a SEPARATE project when the brief truly needs a different scaffold
+(e.g. --tailwind for Tailwind v4 browser-runtime support):
 
     npx hyperframes init <name> --non-interactive --example blank
 
---example is REQUIRED here. The sandbox is non-TTY, and in non-TTY mode init
-refuses to guess. Use --example warm-grain instead of blank if you want a
-styled starting point. Add --resolution=portrait (or landscape-4k, square, ...)
-to change the frame size, and --tailwind for Tailwind v4 browser-runtime
-support.
-
-Then cd into the project directory. Every command below is run from there.
+--example is REQUIRED (non-TTY init refuses to guess; warm-grain is the styled
+alternative). If you switch projects, stop the running preview
+(npx hyperframes preview --stop), start it from the new directory, and re-call
+exposePreview — otherwise the user keeps watching the OLD project.
 `.trim()
 
 const author = `
@@ -113,10 +126,12 @@ Do not run a standalone lint immediately before check; it is redundant.
 validate, inspect and layout are DEPRECATED aliases for check — never use them.
 Add --strict to make warnings fail too.
 
-Start the studio:
+Start the studio — but note it is usually ALREADY RUNNING: the studio UI
+starts \`hyperframes preview\` from /workspace/studio when the user opens the
+page. Check first, and only start one if --status shows nothing:
 
-    npx hyperframes preview --port 3002 --no-open --background
     npx hyperframes preview --status
+    npx hyperframes preview --port 3002 --no-open --background
 
   - --background is REQUIRED here. Without it the server is tied to the
     command, and it dies the moment your shell call returns — leaving nothing
