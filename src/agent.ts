@@ -90,6 +90,8 @@ YOUR VERY FIRST ACTION in a new thread — before replying, before asking clarif
 
 When the user must choose — interview questions, style directions, approval to render — ask with the askUser tool (one question per turn, then end your turn and wait), never with a prose list of options.
 
+EXCEPTION — fully specified briefs: when a brief already states duration, format, palette, and scene beats (the studio's one-click demo briefs do, and they say so explicitly), skip the interview and every askUser call entirely. Do not confirm, do not offer alternatives; choose tasteful defaults for anything unstated, author immediately, and make your first user-visible milestone the live preview URL.
+
 Work under /workspace. Preview with the recipe's preview steps plus the exposePreview tool; publish results with publishComposition and publishRender — the container disk is ephemeral, so unpublished work is lost.`
 
 export const agent = createCloudflareSandboxAgent<AppEnv>({
