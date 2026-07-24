@@ -14,9 +14,12 @@ import {
 } from '@/components/ui/message-scroller'
 import { Message, MessageContent, MessageGroup } from '@/components/ui/message'
 import { Bubble, BubbleContent } from '@/components/ui/bubble'
+import { useCallback } from 'react'
 import { Marker, MarkerContent } from '@/components/ui/marker'
 import { AssistantPartView } from './message-parts'
 import { toolResultsById } from '@/lib/tool-urls'
+import { DEMO_BRIEFS } from '@/lib/demo-briefs'
+import type { DemoBrief } from '@/lib/demo-briefs'
 import type { UIMessage } from '@tanstack/ai-react'
 
 function UserTurn({ message }: { message: UIMessage }) {
@@ -71,7 +74,31 @@ function AssistantTurn({
   )
 }
 
-function EmptyState() {
+function DemoCard({
+  demo,
+  onPick,
+}: {
+  demo: DemoBrief
+  onPick: (text: string) => void
+}) {
+  const handleClick = useCallback(() => {
+    onPick(demo.brief)
+  }, [onPick, demo.brief])
+  return (
+    <button
+      type="button"
+      onClick={handleClick}
+      className="rounded-lg border border-border bg-card px-3 py-2 text-left transition-colors hover:bg-accent"
+    >
+      <span className="block text-sm font-medium">{demo.title}</span>
+      <span className="block text-xs text-muted-foreground">
+        {demo.tagline}
+      </span>
+    </button>
+  )
+}
+
+function EmptyState({ onPick }: { onPick: (text: string) => void }) {
   return (
     <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
       <p className="text-lg font-medium">HyperFrames Studio</p>
@@ -79,9 +106,14 @@ function EmptyState() {
         Describe the video you want. The agent authors a HyperFrames composition
         in a sandbox, previews it live, and renders it to MP4.
       </p>
-      <p className="max-w-sm text-xs text-muted-foreground">
-        Tip: messages starting with a slash invoke the agent&apos;s skills
-        directly — try{' '}
+      <div className="mt-3 grid w-full max-w-md grid-cols-1 gap-2 sm:grid-cols-2">
+        {DEMO_BRIEFS.map((demo) => (
+          <DemoCard key={demo.id} demo={demo} onPick={onPick} />
+        ))}
+      </div>
+      <p className="mt-2 max-w-sm text-xs text-muted-foreground">
+        Demos skip the interview and start authoring immediately. Or type your
+        own brief — slash messages invoke the agent&apos;s skills directly, e.g.{' '}
         <code className="rounded bg-muted px-1">
           /hyperframes a 10s product teaser
         </code>
@@ -105,7 +137,10 @@ export function Transcript({
    * so a page that drops this value shows a run that just… stops.
    */
   error: Error | undefined
-  /** Sends an askUser card's chosen option as the next user message. */
+  /**
+   * Sends text as the next user message — an askUser card's chosen option,
+   * or a demo brief picked from the empty state.
+   */
   onOptionSelect: (text: string) => void
 }) {
   return (
@@ -113,7 +148,9 @@ export function Transcript({
       <MessageScroller>
         <MessageScrollerViewport aria-label="Chat transcript">
           <MessageScrollerContent className="p-4">
-            {messages.length === 0 ? <EmptyState /> : null}
+            {messages.length === 0 ? (
+              <EmptyState onPick={onOptionSelect} />
+            ) : null}
             {messages.map((message) => (
               <MessageScrollerItem
                 key={message.id}
