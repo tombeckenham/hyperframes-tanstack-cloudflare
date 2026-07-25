@@ -16,6 +16,7 @@
 import {
   PREVIEW_GUIDANCE,
   createCloudflareSandboxAgent,
+  resolvePreviewHost,
 } from '@tanstack/ai-sandbox-cloudflare/agent'
 import {
   createSecrets,
@@ -58,8 +59,8 @@ export interface AppEnv extends SandboxAgentEnv {
 /** Claude Code model alias — the CLI resolves it to the current Sonnet. */
 const CLAUDE_MODEL = 'sonnet'
 
-/** Default Grok Build model (matches the TanStack sandbox-cloudflare example). */
-const GROK_MODEL = 'composer-2.5'
+/** Default Grok Build model — current coding model in `grok models` (composer is gone). */
+const GROK_MODEL = 'grok-4.5'
 
 function buildAdapter(harness: HarnessName) {
   if (harness === 'grok') {
@@ -122,11 +123,17 @@ export const agent = createCloudflareSandboxAgent<AppEnv>({
     defineSandbox({
       id: 'hyperframes-studio',
       // Pinned to threadId so host tools address the SAME container the agent
-      // works in. No preview hostname is passed: previews go through a
-      // Cloudflare quick tunnel, not `exposePort`, so there is nothing to
-      // resolve — and `resolvePreviewHost` would throw on a *.workers.dev
-      // deploy if we called it eagerly here.
-      provider: namedCloudflareSandbox(env.Sandbox, input.threadId),
+      // works in. `resolvePreviewHost` is required for Grok Build ACP: on
+      // Cloudflare there is no writable stdin, so ACP auto-selects WebSocket
+      // and needs `ports.connect` / `exposePort` (see TanStack
+      // examples/sandbox-cloudflare). Browser previews of hyperframes still
+      // use quick tunnels via exposePreview — this host is for orchestrator
+      // ↔ container port exposure, not the Player/Studio UI path.
+      provider: namedCloudflareSandbox(
+        env.Sandbox,
+        input.threadId,
+        resolvePreviewHost(env, input),
+      ),
       workspace: defineWorkspace({
         // Nothing to clone — the container image already ships both harness
         // CLIs and the whole HyperFrames toolchain.
