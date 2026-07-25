@@ -3,7 +3,7 @@
  *
  * The problem this solves: a run's sandbox container is pinned to its
  * `threadId` (see `namedCloudflareSandbox`), and every container is injected
- * with this app's `ANTHROPIC_API_KEY`. So whoever can name a `threadId` can
+ * with this app's harness API key. So whoever can name a `threadId` can
  * reach that container — its workspace, its files, and its credentials. If the
  * browser were allowed to send a `threadId` of its choosing, one visitor could
  * address another's container simply by reusing or guessing the value.

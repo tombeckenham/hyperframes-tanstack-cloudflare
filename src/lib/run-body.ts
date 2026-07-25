@@ -44,13 +44,13 @@ function readForwarded(value: object, key: string): string | undefined {
 
 /**
  * The browser-chosen fields this app forwards. `threadKey` names the thread;
- * `sessionId` is the claude-code session echo — the adapter emits it as a
- * CUSTOM `claude-code.session-id` chunk, the client sends it back, and the
- * coordinator turns it into `--resume` so the in-sandbox agent keeps its full
- * working context (loaded skills, read files, interview state) across turns.
- * Without it every turn is a fresh session fed a lossy text preamble that
- * drops tool calls — which is how "pick B" once landed on an agent that could
- * no longer see the options it had offered.
+ * `sessionId` is the harness session echo — the adapter emits it as a CUSTOM
+ * `claude-code.session-id` or `grok-build.session-id` chunk, the client sends
+ * it back, and the coordinator turns it into `--resume` so the in-sandbox
+ * agent keeps its full working context (loaded skills, read files, interview
+ * state) across turns. Without it every turn is a fresh session fed a lossy
+ * text preamble that drops tool calls — which is how "pick B" once landed on
+ * an agent that could no longer see the options it had offered.
  */
 const FORWARDED_KEYS = ['threadKey', 'sessionId'] as const
 
@@ -82,9 +82,10 @@ export const runBodySchema = z.preprocess(
      */
     threadKey: z.string().min(1).max(128),
     /**
-     * The claude-code session to resume, echoed from a prior run's
-     * `claude-code.session-id` chunk. Harmless if stale or forged: it only
-     * selects a session file inside the caller's OWN thread-pinned container.
+     * The harness session to resume, echoed from a prior run's
+     * `claude-code.session-id` or `grok-build.session-id` chunk. Harmless if
+     * stale or forged: it only selects a session file inside the caller's OWN
+     * thread-pinned container.
      */
     sessionId: z.string().min(1).max(128).optional(),
   }),

@@ -28,6 +28,7 @@
     "@tanstack/ai": "^0.42.0",
     "@tanstack/ai-claude-code": "^0.2.3",
     "@tanstack/ai-client": "^0.22.1",
+    "@tanstack/ai-grok-build": "^0.2.3",
     "@tanstack/ai-react": "^0.18.1",
     "@tanstack/ai-react-ui": "^0.8.15",
     "@tanstack/ai-sandbox": "^0.2.4",

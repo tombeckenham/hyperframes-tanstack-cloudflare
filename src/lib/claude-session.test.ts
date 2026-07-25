@@ -9,12 +9,20 @@ const custom = (name: string, value: unknown): StreamChunk => ({
   value,
 })
 
-test('reads the session id from the adapter announcement', () => {
+test('reads the session id from the claude-code adapter announcement', () => {
   expect(
     readClaudeSessionId(
       custom('claude-code.session-id', { sessionId: 'sess-1', model: 'x' }),
     ),
   ).toBe('sess-1')
+})
+
+test('reads the session id from the grok-build adapter announcement', () => {
+  expect(
+    readClaudeSessionId(
+      custom('grok-build.session-id', { sessionId: 'grok-sess' }),
+    ),
+  ).toBe('grok-sess')
 })
 
 test('ignores other chunks and malformed values', () => {

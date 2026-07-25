@@ -28,10 +28,11 @@ Worker**.
   Object coordinator driving a coding agent that lives inside a sandbox,
   with host tools bridged over MCP.
 - **[Cloudflare Sandboxes](https://developers.cloudflare.com/sandbox/)** —
-  full Linux containers addressable from a Worker: the `claude` CLI, Node,
-  Chromium, and ffmpeg run *there*, per-thread, with exec/file APIs and
-  quick tunnels back out. Plus [TanStack Start](https://tanstack.com/start)
-  for the app shell and shadcn/Base UI for the chat components.
+  full Linux containers addressable from a Worker: the coding-agent CLI
+  (`grok` or `claude`), Node, Chromium, and ffmpeg run *there*, per-thread,
+  with exec/file APIs and quick tunnels back out. Plus
+  [TanStack Start](https://tanstack.com/start) for the app shell and
+  shadcn/Base UI for the chat components.
 
 ## What you'll see
 
@@ -52,7 +53,11 @@ Worker**.
 ## What you need
 
 - A **Cloudflare Workers Paid** plan — Cloudflare Containers require it.
-- An **Anthropic API key** — the in-sandbox `claude` CLI is the agent.
+- An **agent API key** — set `XAI_API_KEY` or `ANTHROPIC_API_KEY`:
+  - **xAI** (`XAI_API_KEY`) → [Grok Build](https://x.ai/cli) (wins if both set)
+  - **Anthropic** (`ANTHROPIC_API_KEY`) → Claude Code  
+  The sandbox image ships both CLIs; selection is automatic (see
+  `src/lib/harness.ts`).
 - For local development only: [Bun](https://bun.sh) and **Docker Desktop**
   (the Cloudflare Vite plugin builds and runs the sandbox container locally;
   OrbStack cannot run Cloudflare containers).
@@ -65,11 +70,12 @@ Worker**.
    GitHub/GitLab account, provisions the R2 bucket, sets up CI (Workers
    Builds), and deploys. You can rename the Worker, repo, and bucket on the
    setup page.
-2. **Add your Anthropic key** — the one thing the button can't do for you.
+2. **Add an agent key** — the one thing the button can't do for you.
    In the Cloudflare dashboard: your Worker → *Settings* → *Variables and
-   Secrets* → add a **secret** named `ANTHROPIC_API_KEY`. (Or from a checkout:
-   `bunx wrangler secret put ANTHROPIC_API_KEY`.) Without it, deploys succeed
-   but every agent run fails at startup with a clear error.
+   Secrets* → add `XAI_API_KEY` (Grok Build) or `ANTHROPIC_API_KEY` (Claude
+   Code). From a checkout: `bunx wrangler secret put XAI_API_KEY` (or
+   `ANTHROPIC_API_KEY`). Without one, deploys succeed but every agent run fails
+   at startup with a clear error. If both are set, Grok Build wins.
 3. **Give the container a few minutes.** The sandbox image finishes
    `provisioning → ready` after the Worker deploy. When the studio loads,
    the Player should show the intro animation — that's your proof the
@@ -84,7 +90,8 @@ automatically.
 git clone <your fork> && cd hyperframes-tanstack-cloudflare
 bun install
 bunx wrangler r2 bucket create hyperframes-studio-renders   # match wrangler.jsonc
-bunx wrangler secret put ANTHROPIC_API_KEY
+bunx wrangler secret put XAI_API_KEY                        # Grok Build (wins if both set)
+# or: bunx wrangler secret put ANTHROPIC_API_KEY            # Claude Code
 bun run deploy                                              # build + wrangler deploy
 ```
 
@@ -113,7 +120,7 @@ Everything configurable lives in `wrangler.jsonc`: the Worker `name`, the R2
 
 ```bash
 bun install
-cp .dev.vars.example .dev.vars   # put your ANTHROPIC_API_KEY in it
+cp .dev.vars.example .dev.vars   # set XAI_API_KEY or ANTHROPIC_API_KEY
 bun run dev                      # http://localhost:3001 — Docker Desktop must be running
 ```
 
@@ -147,7 +154,7 @@ bun run cf-typegen   # wrangler types (after editing wrangler.jsonc)
 
 ```
 Browser ──POST /api/run──▶ Start server route ──DO RPC──▶ RunCoordinator DO ──▶ Sandbox container
-   ▲                          (SSE bridge)                  (drives chat())      (claude CLI +
+   ▲                          (SSE bridge)                  (drives chat())      (grok/claude CLI +
    └──────── SSE ─────────────────┘                                               hyperframes CLI)
 ```
 
@@ -157,14 +164,16 @@ Browser ──POST /api/run──▶ Start server route ──DO RPC──▶ Ru
 - The **`RunCoordinator` Durable Object** owns each run: it drives the agent
   loop under `ctx.waitUntil`, appends every chunk to a durable, `seq`-indexed
   log, and serves resumable WebSocket tails. No Worker invocation ever holds
-  a multi-minute agent loop.
-- The **sandbox container** carries the `claude` CLI and the whole
-  HyperFrames toolchain (Node 22, Chromium, ffmpeg), plus a ready-made
-  project at `/workspace/studio` the agent authors in — its running preview
-  hot-reloads straight into what the user is watching. Host tools — preview
-  tunnels, R2 publishing, the authoring recipe — are served to the
-  in-sandbox agent over MCP at `/_bridge/:runId`, gated by a per-run bearer
-  token.
+  a multi-minute agent loop. Harness selection is automatic: `XAI_API_KEY` →
+  Grok Build (wins if both set), else `ANTHROPIC_API_KEY` → Claude Code
+  (`src/lib/harness.ts`).
+- The **sandbox container** carries both coding-agent CLIs (`grok` and
+  `claude`) and the whole HyperFrames toolchain (Node 22, Chromium, ffmpeg),
+  plus a ready-made project at `/workspace/studio` the agent authors in — its
+  running preview hot-reloads straight into what the user is watching. Host
+  tools — preview tunnels, R2 publishing, the authoring recipe — are served
+  to the in-sandbox agent over MCP at `/_bridge/:runId`, gated by a per-run
+  bearer token.
 - The preview sandbox boots on page load (`POST /api/preview` "ensure"), its
   tunnel is health-polled without waking a sleeping container ("probe"), and
   a stopped sandbox surfaces as an explicit *Resume* button rather than a
@@ -207,7 +216,7 @@ Browser ──POST /api/run──▶ Start server route ──DO RPC──▶ Ru
 - A visitor's `threadId` is `SHA-256(sessionId ‖ threadKey)` — derived
   server-side from an HttpOnly cookie, never taken from the request body.
   The package's unauthenticated `/runs` trigger is deliberately not routed.
-- Containers are pinned per-thread and carry the app's `ANTHROPIC_API_KEY`,
+- Containers are pinned per-thread and carry the selected harness API key,
   which is why the two lines above are load-bearing.
 - Published, shareable LLM-authored HTML is served from `/p/*` with
   `Content-Security-Policy: sandbox allow-scripts` — an opaque origin, no

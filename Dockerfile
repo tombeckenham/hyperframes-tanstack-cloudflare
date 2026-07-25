@@ -1,11 +1,13 @@
 # Sandbox container image for the HyperFrames authoring studio.
 #
-# One image, two toolchains:
-#   1. the `claude` CLI — the coding agent the RunCoordinator DO drives via
-#      chat(); it authors the composition inside this container.
+# One image, three toolchains:
+#   1. the coding-agent CLIs — both `claude` (Claude Code) and `grok` (Grok
+#      Build). The RunCoordinator DO picks one per run from Worker secrets
+#      (XAI_API_KEY → grok if set, else ANTHROPIC_API_KEY → claude); see
+#      src/lib/harness.ts. Both CLIs are baked so key selection does not rebuild.
 #   2. the HyperFrames toolchain (Node 22, Chromium libs, chrome-headless-shell,
-#      ffmpeg, `hyperframes`) — what that agent then runs to preview, lint and
-#      render the composition it just wrote.
+#      ffmpeg, `hyperframes`) — what the selected agent runs to preview, lint
+#      and render the composition it just wrote.
 #
 # Everything is baked at build time. Container disk is ephemeral
 # (`durableFilesystem: false`), so anything installed at run time would be paid
@@ -68,16 +70,18 @@ RUN npm install -g @anthropic-ai/claude-code --include=optional \
  && claude --version \
  && npm cache clean --force
 
-# Chromium runtime libraries. `hyperframes` renders frames by driving
-# chrome-headless-shell; the shell binary is self-contained except for these
-# system .so's, and without them it dies at launch with a bare
-# "error while loading shared libraries". List mirrors the one proven in
-# hyperframes-cloudflare-template's render image, adjusted for jammy.
+# Chromium runtime libraries + curl (for the Grok Build installer below).
+# `hyperframes` renders frames by driving chrome-headless-shell; the shell
+# binary is self-contained except for these system .so's, and without them it
+# dies at launch with a bare "error while loading shared libraries". List
+# mirrors the one proven in hyperframes-cloudflare-template's render image,
+# adjusted for jammy.
 #
 # `apt-get clean` + removing the lists keeps ~40MB of index metadata out of the
 # layer; it is never useful at run time.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
+    curl \
     fonts-liberation \
     libasound2 \
     libatk-bridge2.0-0 \
@@ -104,6 +108,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     xdg-utils \
   && apt-get clean \
   && rm -rf /var/lib/apt/lists/*
+
+# Grok Build CLI — installed as documented at https://x.ai/cli (with the GCS
+# mirror fallback from @tanstack/ai-grok-build). The installer drops the binary
+# at /root/.grok/bin/grok; symlink it onto PATH so the harness adapter (which
+# invokes `grok`) resolves it. `grok --version` fails the build if install
+# silently produced nothing usable.
+RUN (curl -fsSL https://x.ai/cli/install.sh \
+      || curl -fsSL https://storage.googleapis.com/grok-build-public-artifacts/cli/install.sh) \
+    | bash \
+ && ln -sf /root/.grok/bin/grok /usr/local/bin/grok \
+ && grok --version
 
 # The HyperFrames CLI plus static ffmpeg AND ffprobe builds.
 #
@@ -166,9 +181,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 #   - `browser ensure` — bakes chrome-headless-shell so a cold container
 #     never pays a multi-hundred-MB download onto a throwaway disk.
 #   - `skills update` — the agent skills, where the in-container `claude`
-#     CLI auto-discovers them (/root/.claude/skills). Its `npx skills add`
-#     child is what left the bin mid-rename (signature 2), hence the
-#     settle + relink + temp-sweep repair before the final asserts.
+#     CLI auto-discovers them (/root/.claude/skills). Mirrored into
+#     /root/.grok/skills so Grok Build finds the same skill set. Its
+#     `npx skills add` child is what left the bin mid-rename (signature 2),
+#     hence the settle + relink + temp-sweep repair before the final asserts.
 #   - `@hyperframes/core` + the /usr/local/lib/hyperframes node_modules
 #     symlink: what makes `import '@hyperframes/core/compiler'` resolve in
 #     bundle.mjs. NODE_PATH cannot do this job — ESM resolution does not
@@ -186,6 +202,12 @@ RUN npm install -g hyperframes@${HYPERFRAMES_VERSION} @hyperframes/core@${HYPERF
  && hyperframes browser ensure \
  && HOME=/root hyperframes skills update --json \
  && test -s /root/.claude/skills/hyperframes/SKILL.md \
+ && mkdir -p /root/.grok/skills \
+ && for d in /root/.claude/skills/*; do \
+      [ -e "$d" ] || continue; \
+      ln -sfn "$d" "/root/.grok/skills/$(basename "$d")"; \
+    done \
+ && test -s /root/.grok/skills/hyperframes/SKILL.md \
  && sleep 2 \
  && ln -sf ../lib/node_modules/hyperframes/bin/hyperframes.mjs /usr/local/bin/hyperframes \
  && rm -f /usr/local/bin/.hyperframes-* \

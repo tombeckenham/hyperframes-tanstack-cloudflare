@@ -82,8 +82,9 @@ bunx shadcn@latest add <component>   # primitives and chat components, same regi
 
 - **Docker Desktop must be running.** The Cloudflare Vite plugin builds and runs the
   sandbox container image locally. OrbStack cannot run Cloudflare containers.
-- `.dev.vars` (gitignored) with `ANTHROPIC_API_KEY` for the in-sandbox `claude` CLI.
-  Copy from `.dev.vars.example`.
+- `.dev.vars` (gitignored) with an agent key: `XAI_API_KEY` (Grok Build) or
+  `ANTHROPIC_API_KEY` (Claude Code). If both are set, xAI wins — see
+  `src/lib/harness.ts`. Copy from `.dev.vars.example`.
 - No tunnel or public hostname is needed locally. See "Two host surfaces" below.
 
 ## Architecture
@@ -92,7 +93,7 @@ Three tiers, one Worker:
 
 ```
 Browser ──POST /api/run──▶ Start server route ──DO RPC──▶ RunCoordinator DO ──▶ Sandbox container
-   ▲                          (SSE bridge)                  (drives chat())      (claude CLI +
+   ▲                          (SSE bridge)                  (drives chat())      (grok/claude CLI +
    └──────── SSE ─────────────────┘                                               hyperframes CLI)
 ```
 
@@ -104,16 +105,20 @@ Browser ──POST /api/run──▶ Start server route ──DO RPC──▶ Ru
    `/runs` and `/tool-exec` are **deliberately not routed**. The package's `/runs`
    trigger has no authentication — it takes `threadId` straight from the body and does
    `idFromName(threadId)` — so exposing it let anyone start a run in any thread, and a
-   thread's container holds `ANTHROPIC_API_KEY`. Nothing needs it over HTTP (the browser
+   thread's container holds the harness API key. Nothing needs it over HTTP (the browser
    goes through `/api/run` over the binding). `/tool-exec` is `colocated`-mode only, and
    this app runs `do-drives`. Removing them beats authenticating them.
 2. **`RunCoordinator` Durable Object** — owns a run. `startRun()` over the binding
    registers it; the DO drives `chat()` under `ctx.waitUntil` plus a watchdog
    alarm, appends every `StreamChunk` to a `seq`-indexed durable log, and serves
    resumable WebSocket tails. A Worker invocation never holds a multi-minute agent loop.
-3. **Sandbox container** — the `claude` CLI *and* the HyperFrames toolchain (Node 22,
-   Chromium, ffmpeg, `hyperframes`) live in the image. The agent authors compositions,
-   runs `hyperframes preview`/`lint`/`render` there.
+   Harness is resolved from Worker secrets: `XAI_API_KEY` → Grok Build (wins if
+   both are set), else `ANTHROPIC_API_KEY` → Claude Code (`src/lib/harness.ts`).
+   Only the selected key is injected into the sandbox.
+3. **Sandbox container** — both coding-agent CLIs (`grok` and `claude`) *and* the
+   HyperFrames toolchain (Node 22, Chromium, ffmpeg, `hyperframes`) live in the image.
+   The selected agent authors compositions, runs `hyperframes preview`/`lint`/`render`
+   there.
 
 ### Why `/api/run` talks to the DO, not to `/runs`
 
@@ -126,9 +131,9 @@ local `workerd`; and `/runs` is no longer routed publicly at all (see above).
 
 ### Thread identity — never trust a client-supplied `threadId`
 
-A run's container is pinned to its `threadId` and every container carries
-`ANTHROPIC_API_KEY`, so whoever can name a `threadId` can reach that container. `/api/run`
-must therefore derive it via `src/lib/session.ts`:
+A run's container is pinned to its `threadId` and every container carries the
+selected harness API key, so whoever can name a `threadId` can reach that container.
+`/api/run` must therefore derive it via `src/lib/session.ts`:
 
 ```
 sessionId  256-bit random, HttpOnly cookie (opaque — nothing stored, nothing verified)
@@ -236,9 +241,9 @@ survives DO eviction for `lifecycle: { reuse: 'thread' }`.
 ## Known constraints
 
 - **No writable host→process stdin** in the Cloudflare sandbox
-  (`capabilities.writableStdin: false`). The Claude Code adapter handles this by writing
-  the prompt to a file and redirecting stdin in-shell. Interactive/duplex ACP harnesses
-  will not work.
+  (`capabilities.writableStdin: false`). Harness adapters handle this by writing the
+  prompt to a file and redirecting stdin in-shell (or using ACP transport for Grok).
+  Interactive/duplex ACP that needs host→process stdin will not work.
 - **Container disk is ephemeral** (`durableFilesystem: false`). Anything that must
   survive a cold start has to be persisted by the host — that is what R2 is for.
 - **Sandbox secrets are host-controlled**, identical for every caller. The run trigger

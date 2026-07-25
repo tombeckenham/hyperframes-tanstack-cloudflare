@@ -131,7 +131,7 @@ export const Sandbox = agent.Sandbox
  *    `threadId` straight from the body and `resolveCoordinator` does
  *    `idFromName(threadId)`, with no authentication at all. Exposing it let
  *    anyone start a run in any thread — and the container a thread is pinned to
- *    holds this app's ANTHROPIC_API_KEY. Nothing needs it over HTTP: the
+ *    holds this app's harness API key. Nothing needs it over HTTP: the
  *    browser goes through `/api/run`, which addresses the coordinator over the
  *    RUN_COORDINATOR binding (required regardless — a Worker fetching its own
  *    hostname is a same-zone self-subrequest, Cloudflare error 1042).

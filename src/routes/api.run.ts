@@ -112,8 +112,9 @@ export const Route = createFileRoute('/api/run')({
         POST: {
           middleware: [runBodyMiddleware],
           handler: async ({ request, context }) => {
-            // `agentSessionId` is the CLAUDE session inside the container —
-            // nothing to do with the visitor's cookie session below.
+            // `agentSessionId` is the harness session inside the container
+            // (claude-code or grok-build) — nothing to do with the visitor's
+            // cookie session below.
             const {
               messages,
               threadKey,

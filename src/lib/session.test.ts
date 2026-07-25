@@ -123,7 +123,7 @@ test('thread id derivation is deterministic', async () => {
 
 test('THE security property: same threadKey, different sessions, different threads', async () => {
   // Without this, two visitors naming a thread the same way would share a
-  // container — and every container holds this app's ANTHROPIC_API_KEY.
+  // container — and every container holds this app's harness API key.
   const a = await deriveThreadId(createSessionId(), 'my-video')
   const b = await deriveThreadId(createSessionId(), 'my-video')
   expect(a).not.toBe(b)

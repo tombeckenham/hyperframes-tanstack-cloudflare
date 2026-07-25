@@ -1,8 +1,9 @@
 /**
  * The transcript: shadcn's `message-scroller` shell around `Message`/`Bubble`
  * turns. The scroller is the piece worth taking from the registry — it owns
- * anchored turns, streamed-reply autoscroll and jump-to-latest, exactly the
- * behaviour a multi-minute agent run needs.
+ * streamed-reply autoscroll and jump-to-latest, exactly the behaviour a
+ * multi-minute agent run needs. (No per-user scrollAnchor: that pins the
+ * viewport on the user bubble and stops following while the agent streams.)
  */
 import {
   MessageScroller,
@@ -152,11 +153,7 @@ export function Transcript({
               <EmptyState onPick={onOptionSelect} />
             ) : null}
             {messages.map((message) => (
-              <MessageScrollerItem
-                key={message.id}
-                messageId={message.id}
-                scrollAnchor={message.role === 'user'}
-              >
+              <MessageScrollerItem key={message.id} messageId={message.id}>
                 <MessageGroup>
                   {message.role === 'user' ? (
                     <UserTurn message={message} />

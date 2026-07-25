@@ -1,9 +1,14 @@
 # Copy to `.dev.vars` (gitignored) for local development.
 #
-# The key the in-sandbox `claude` CLI authenticates with. It is injected into
-# the container as a workspace secret, never exposed to the browser.
-# For a deployed Worker use: wrangler secret put ANTHROPIC_API_KEY
-ANTHROPIC_API_KEY=
+# Agent harness — set XAI_API_KEY or ANTHROPIC_API_KEY (src/lib/harness.ts):
+#   XAI_API_KEY=...        → Grok Build (wins if both are set)
+#   ANTHROPIC_API_KEY=...  → Claude Code
+# Only the selected key is injected into the sandbox; never expose it to the
+# browser. For a deployed Worker:
+#   wrangler secret put XAI_API_KEY
+#   # or: wrangler secret put ANTHROPIC_API_KEY
+XAI_API_KEY=
+# ANTHROPIC_API_KEY=
 
 # PUBLIC_HOSTNAME — OVERRIDE ONLY, normally leave unset.
 # The host the CONTAINER uses to reach the Worker's tool bridge (/_bridge).
