@@ -13,6 +13,11 @@
  * `lifecycle: { reuse: 'thread' }`: the container stays addressable across
  * Durable Object eviction, not merely within one live instance.
  *
+ * Spawn kill: the package's `CloudflareHandle.spawn().kill` is a no-op (see
+ * `src/lib/killable-spawn.ts`). We wrap every handle so dispose of a Grok ACP
+ * `agent serve` actually frees the port — without that, the next user message
+ * fails with a closed WebSocket (issue #30).
+ *
  * Note the import of `CLOUDFLARE_CAPS` / `CloudflareHandle` from the package
  * ROOT entry, not `/agent`. The `/agent` entry imports `cloudflare:workers` and
  * is Workers-only; the root entry is node-safe. Keep it that way.
@@ -22,13 +27,21 @@ import {
   CLOUDFLARE_CAPS,
   CloudflareHandle,
 } from '@tanstack/ai-sandbox-cloudflare'
+import {
+  killFromPidFile,
+  newSpawnPidFile,
+  reapLeakedGrokServe,
+  wrapCommandWithPidFile,
+} from './lib/killable-spawn'
 import type { Sandbox } from '@cloudflare/sandbox'
 import type {
+  ProcessOptions,
   SandboxCreateInput,
   SandboxDestroyInput,
   SandboxHandle,
   SandboxProvider,
   SandboxResumeInput,
+  SpawnHandle,
 } from '@tanstack/ai-sandbox'
 
 const WORKDIR = '/workspace'
@@ -41,6 +54,66 @@ const WORKDIR = '/workspace'
  * to match on the server side.
  */
 const SANDBOX_OPTIONS = { transport: 'rpc' } as const
+
+/**
+ * Layer real `kill()` on the package handle: wrap each spawn command with a
+ * PID file, and replace `kill` so ACP `dispose` can stop `grok agent serve`.
+ */
+function withKillableSpawn(inner: SandboxHandle): SandboxHandle {
+  const exec = (command: string) => inner.process.exec(command)
+
+  const handle: SandboxHandle = {
+    id: inner.id,
+    provider: inner.provider,
+    capabilities: inner.capabilities,
+    fs: inner.fs,
+    git: inner.git,
+    ports: inner.ports,
+    env: inner.env,
+    destroy: () => inner.destroy(),
+    process: {
+      exec: (command, options) => inner.process.exec(command, options),
+      spawn: async (
+        command: string,
+        options?: ProcessOptions,
+      ): Promise<SpawnHandle> => {
+        const pidFile = newSpawnPidFile()
+        const proc = await inner.process.spawn(
+          wrapCommandWithPidFile(command, pidFile),
+          options,
+        )
+        return {
+          pid: proc.pid,
+          stdout: proc.stdout,
+          stderr: proc.stderr,
+          stdin: proc.stdin,
+          wait: () => proc.wait(),
+          kill: async () => {
+            await killFromPidFile(exec, pidFile)
+          },
+        }
+      },
+    },
+  }
+  if (inner.workspaceRoot !== undefined) {
+    // exactOptionalPropertyTypes: only set when present.
+    return { ...handle, workspaceRoot: inner.workspaceRoot }
+  }
+  return handle
+}
+
+async function openHandle(
+  sandbox: Sandbox,
+  id: string,
+  previewHostname: string | undefined,
+): Promise<SandboxHandle> {
+  // Free a serve left by a previous turn whose kill was a no-op (or never
+  // ran). Must run before the new ACP connection binds the port.
+  await reapLeakedGrokServe((command) => sandbox.exec(command))
+  return withKillableSpawn(
+    new CloudflareHandle(id, sandbox, WORKDIR, previewHostname),
+  )
+}
 
 export function namedCloudflareSandbox(
   binding: DurableObjectNamespace<Sandbox>,
@@ -56,17 +129,12 @@ export function namedCloudflareSandbox(
         await sandbox.setEnvVars(input.env)
       }
       await sandbox.mkdir(WORKDIR, { recursive: true })
-      return new CloudflareHandle(name, sandbox, WORKDIR, previewHostname)
+      return openHandle(sandbox, name, previewHostname)
     },
-    resume: (input: SandboxResumeInput): Promise<SandboxHandle | null> =>
-      Promise.resolve(
-        new CloudflareHandle(
-          input.id,
-          getSandbox(binding, input.id, SANDBOX_OPTIONS),
-          WORKDIR,
-          previewHostname,
-        ),
-      ),
+    async resume(input: SandboxResumeInput): Promise<SandboxHandle | null> {
+      const sandbox = getSandbox(binding, input.id, SANDBOX_OPTIONS)
+      return openHandle(sandbox, input.id, previewHostname)
+    },
     async destroy(input: SandboxDestroyInput): Promise<void> {
       await getSandbox(binding, input.id, SANDBOX_OPTIONS).destroy()
     },
