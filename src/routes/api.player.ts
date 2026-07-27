@@ -13,41 +13,41 @@
  *
  * The upstream is the preview server's bundled-composition route
  * (`/api/projects/<project>/preview`), fetched with an in-container curl and
- * returned via exec stdout — the same bundle-over-stdout pattern
- * publishComposition already relies on (src/tools/publish.ts). NOT
- * `sandbox.containerFetch`: over the rpc-transport stub in local dev that
- * call never resolved, hanging the route (tested against live and dead ports
- * alike). The upstream's `/api/runtime.js` script tag will 404 on our
- * origin; that is fine — the player injects the runtime from its own CDN
- * when a composition needs one, and self-contained compositions are driven
- * through `__timelines` without it.
+ * returned via exec stdout. NOT `sandbox.containerFetch`: over the
+ * rpc-transport stub in local dev that call never resolved, hanging the route.
  *
- * TRUST, deliberately weighed: this serves LLM-authored HTML same-origin,
- * WITHOUT the `/p/*` CSP sandbox — the sandbox would give the document an
- * opaque origin and re-break the player (the whole reason `/p/*` never
- * worked in the player). The blast radius differs from `/p/*`: that is a
- * durable, shareable URL; this route derives `threadId` from the visitor's
- * OWN session cookie, so a composition is only ever served to the tenant
- * whose agent authored it. The exposure is "your own thread's agent runs
- * script in your page", accepted here as the cost of a working player —
- * the same trade the reference template ships.
+ * Relative assets (images, fonts, …) resolve via `<base href>` to
+ * `/api/player/media/...` (see `src/routes/api.player.media.$threadKey.$port.$project.$.ts`)
+ * so the Worker can proxy them out of the same container without loading the
+ * tunnel. The rewrite lives in `src/lib/player-proxy.ts`.
  *
- * `port`/`project` come from the client (its ensure result). They only
- * select which port/path of the CALLER'S OWN container to read — the same
- * authority the caller already has through the agent — and are validated to
- * shapes that cannot escape that container.
+ * TRUST: serves LLM-authored HTML same-origin without the `/p/*` CSP sandbox
+ * (that would give an opaque origin and re-break the player). `threadId` is
+ * derived from the visitor's session cookie — only their own thread.
+ *
+ * `port`/`project` come from the client (its ensure result). They only select
+ * which port/path of the CALLER'S OWN container to read.
  */
 import { createFileRoute } from '@tanstack/react-router'
 import { env } from 'cloudflare:workers'
 import { getSandbox } from '@cloudflare/sandbox'
 import { z } from 'zod'
+import {
+  compositionCurlCommand,
+  isPlayerThreadKey,
+  rewritePlayerAssetBase,
+} from '../lib/player-proxy'
 import { deriveThreadId, resolveSession } from '../lib/session'
 
 /** Must match every other getSandbox() for this id — see sandbox-provider.ts. */
 const SANDBOX_OPTIONS = { transport: 'rpc' } as const
 
 const searchSchema = z.object({
-  threadKey: z.string().min(1).max(128),
+  // Same shape the media route enforces — a looser key here would serve a
+  // composition whose rewritten asset URLs all 400 (a confusing half-failure).
+  threadKey: z
+    .string()
+    .refine(isPlayerThreadKey, { message: 'invalid threadKey' }),
   port: z.coerce
     .number()
     .int()
@@ -86,12 +86,11 @@ export const Route = createFileRoute('/api/player')({
 
             try {
               const sandbox = getSandbox(env.Sandbox, threadId, SANDBOX_OPTIONS)
-              // `project` is regex-validated ([A-Za-z0-9._-]) and `port` is an
-              // int, so neither can carry shell metacharacters. `-f` makes an
-              // upstream error status an exec failure instead of an error page
-              // served as a composition.
+              // `project` is regex-validated and `port` is an int — neither can
+              // carry shell metacharacters. `-f` makes an upstream error status
+              // an exec failure instead of an error page served as a composition.
               const result = await sandbox.exec(
-                `curl -sf --max-time 20 http://127.0.0.1:${port}/api/projects/${encodeURIComponent(project)}/preview`,
+                compositionCurlCommand(port, project),
               )
               if (!result.success || result.stdout.length === 0) {
                 return new Response(
@@ -99,6 +98,12 @@ export const Route = createFileRoute('/api/player')({
                   { status: 502 },
                 )
               }
+              const html = rewritePlayerAssetBase(
+                result.stdout,
+                threadKey,
+                port,
+                project,
+              )
               const headers = new Headers({
                 'content-type': 'text/html; charset=utf-8',
                 'cache-control': 'no-store',
@@ -107,7 +112,7 @@ export const Route = createFileRoute('/api/player')({
                 'content-security-policy': "frame-ancestors 'self'",
               })
               if (setCookie !== null) headers.set('set-cookie', setCookie)
-              return new Response(result.stdout, { headers })
+              return new Response(html, { headers })
             } catch (error) {
               console.error('[api/player] proxy error:', error)
               return new Response(

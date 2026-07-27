@@ -17,6 +17,7 @@ import { Route as ApiRunRouteImport } from './routes/api.run'
 import { Route as PSplatRouteImport } from './routes/p.$'
 import { Route as RSplatRouteImport } from './routes/r.$'
 import { Route as ApiUploadsRunIdNameRouteImport } from './routes/api.uploads.$runId.$name'
+import { Route as ApiPlayerMediaThreadKeyPortProjectSplatRouteImport } from './routes/api.player.media.$threadKey.$port.$project.$'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -58,37 +59,46 @@ const ApiUploadsRunIdNameRoute = ApiUploadsRunIdNameRouteImport.update({
   path: '/api/uploads/$runId/$name',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPlayerMediaThreadKeyPortProjectSplatRoute =
+  ApiPlayerMediaThreadKeyPortProjectSplatRouteImport.update({
+    id: '/media/$threadKey/$port/$project/$',
+    path: '/media/$threadKey/$port/$project/$',
+    getParentRoute: () => ApiPlayerRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/api/artifacts': typeof ApiArtifactsRoute
-  '/api/player': typeof ApiPlayerRoute
+  '/api/player': typeof ApiPlayerRouteWithChildren
   '/api/preview': typeof ApiPreviewRoute
   '/api/run': typeof ApiRunRoute
   '/p/$': typeof PSplatRoute
   '/r/$': typeof RSplatRoute
   '/api/uploads/$runId/$name': typeof ApiUploadsRunIdNameRoute
+  '/api/player/media/$threadKey/$port/$project/$': typeof ApiPlayerMediaThreadKeyPortProjectSplatRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/api/artifacts': typeof ApiArtifactsRoute
-  '/api/player': typeof ApiPlayerRoute
+  '/api/player': typeof ApiPlayerRouteWithChildren
   '/api/preview': typeof ApiPreviewRoute
   '/api/run': typeof ApiRunRoute
   '/p/$': typeof PSplatRoute
   '/r/$': typeof RSplatRoute
   '/api/uploads/$runId/$name': typeof ApiUploadsRunIdNameRoute
+  '/api/player/media/$threadKey/$port/$project/$': typeof ApiPlayerMediaThreadKeyPortProjectSplatRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/api/artifacts': typeof ApiArtifactsRoute
-  '/api/player': typeof ApiPlayerRoute
+  '/api/player': typeof ApiPlayerRouteWithChildren
   '/api/preview': typeof ApiPreviewRoute
   '/api/run': typeof ApiRunRoute
   '/p/$': typeof PSplatRoute
   '/r/$': typeof RSplatRoute
   '/api/uploads/$runId/$name': typeof ApiUploadsRunIdNameRoute
+  '/api/player/media/$threadKey/$port/$project/$': typeof ApiPlayerMediaThreadKeyPortProjectSplatRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -101,6 +111,7 @@ export interface FileRouteTypes {
     | '/p/$'
     | '/r/$'
     | '/api/uploads/$runId/$name'
+    | '/api/player/media/$threadKey/$port/$project/$'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -111,6 +122,7 @@ export interface FileRouteTypes {
     | '/p/$'
     | '/r/$'
     | '/api/uploads/$runId/$name'
+    | '/api/player/media/$threadKey/$port/$project/$'
   id:
     | '__root__'
     | '/'
@@ -121,12 +133,13 @@ export interface FileRouteTypes {
     | '/p/$'
     | '/r/$'
     | '/api/uploads/$runId/$name'
+    | '/api/player/media/$threadKey/$port/$project/$'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ApiArtifactsRoute: typeof ApiArtifactsRoute
-  ApiPlayerRoute: typeof ApiPlayerRoute
+  ApiPlayerRoute: typeof ApiPlayerRouteWithChildren
   ApiPreviewRoute: typeof ApiPreviewRoute
   ApiRunRoute: typeof ApiRunRoute
   PSplatRoute: typeof PSplatRoute
@@ -192,13 +205,33 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiUploadsRunIdNameRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/player/media/$threadKey/$port/$project/$': {
+      id: '/api/player/media/$threadKey/$port/$project/$'
+      path: '/media/$threadKey/$port/$project/$'
+      fullPath: '/api/player/media/$threadKey/$port/$project/$'
+      preLoaderRoute: typeof ApiPlayerMediaThreadKeyPortProjectSplatRouteImport
+      parentRoute: typeof ApiPlayerRoute
+    }
   }
 }
+
+interface ApiPlayerRouteChildren {
+  ApiPlayerMediaThreadKeyPortProjectSplatRoute: typeof ApiPlayerMediaThreadKeyPortProjectSplatRoute
+}
+
+const ApiPlayerRouteChildren: ApiPlayerRouteChildren = {
+  ApiPlayerMediaThreadKeyPortProjectSplatRoute:
+    ApiPlayerMediaThreadKeyPortProjectSplatRoute,
+}
+
+const ApiPlayerRouteWithChildren = ApiPlayerRoute._addFileChildren(
+  ApiPlayerRouteChildren,
+)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ApiArtifactsRoute: ApiArtifactsRoute,
-  ApiPlayerRoute: ApiPlayerRoute,
+  ApiPlayerRoute: ApiPlayerRouteWithChildren,
   ApiPreviewRoute: ApiPreviewRoute,
   ApiRunRoute: ApiRunRoute,
   PSplatRoute: PSplatRoute,
