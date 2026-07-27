@@ -26,8 +26,8 @@ const SESSION_ID_EVENTS = new Set<string>(
 )
 
 export interface HarnessEnv {
-  ANTHROPIC_API_KEY?: string
-  XAI_API_KEY?: string
+  ANTHROPIC_API_KEY?: string | undefined
+  XAI_API_KEY?: string | undefined
 }
 
 function hasKey(value: string | undefined): value is string {

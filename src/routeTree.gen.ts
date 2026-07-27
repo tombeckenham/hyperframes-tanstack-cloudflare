@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiArtifactsRouteImport } from './routes/api.artifacts'
+import { Route as ApiHarnessRouteImport } from './routes/api.harness'
 import { Route as ApiPlayerRouteImport } from './routes/api.player'
 import { Route as ApiPreviewRouteImport } from './routes/api.preview'
 import { Route as ApiRunRouteImport } from './routes/api.run'
@@ -27,6 +28,11 @@ const IndexRoute = IndexRouteImport.update({
 const ApiArtifactsRoute = ApiArtifactsRouteImport.update({
   id: '/api/artifacts',
   path: '/api/artifacts',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiHarnessRoute = ApiHarnessRouteImport.update({
+  id: '/api/harness',
+  path: '/api/harness',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiPlayerRoute = ApiPlayerRouteImport.update({
@@ -69,6 +75,7 @@ const ApiPlayerMediaThreadKeyPortProjectSplatRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/api/artifacts': typeof ApiArtifactsRoute
+  '/api/harness': typeof ApiHarnessRoute
   '/api/player': typeof ApiPlayerRouteWithChildren
   '/api/preview': typeof ApiPreviewRoute
   '/api/run': typeof ApiRunRoute
@@ -80,6 +87,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/api/artifacts': typeof ApiArtifactsRoute
+  '/api/harness': typeof ApiHarnessRoute
   '/api/player': typeof ApiPlayerRouteWithChildren
   '/api/preview': typeof ApiPreviewRoute
   '/api/run': typeof ApiRunRoute
@@ -92,6 +100,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/api/artifacts': typeof ApiArtifactsRoute
+  '/api/harness': typeof ApiHarnessRoute
   '/api/player': typeof ApiPlayerRouteWithChildren
   '/api/preview': typeof ApiPreviewRoute
   '/api/run': typeof ApiRunRoute
@@ -105,6 +114,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/api/artifacts'
+    | '/api/harness'
     | '/api/player'
     | '/api/preview'
     | '/api/run'
@@ -116,6 +126,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/api/artifacts'
+    | '/api/harness'
     | '/api/player'
     | '/api/preview'
     | '/api/run'
@@ -127,6 +138,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/api/artifacts'
+    | '/api/harness'
     | '/api/player'
     | '/api/preview'
     | '/api/run'
@@ -139,6 +151,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ApiArtifactsRoute: typeof ApiArtifactsRoute
+  ApiHarnessRoute: typeof ApiHarnessRoute
   ApiPlayerRoute: typeof ApiPlayerRouteWithChildren
   ApiPreviewRoute: typeof ApiPreviewRoute
   ApiRunRoute: typeof ApiRunRoute
@@ -161,6 +174,13 @@ declare module '@tanstack/react-router' {
       path: '/api/artifacts'
       fullPath: '/api/artifacts'
       preLoaderRoute: typeof ApiArtifactsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/harness': {
+      id: '/api/harness'
+      path: '/api/harness'
+      fullPath: '/api/harness'
+      preLoaderRoute: typeof ApiHarnessRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/player': {
@@ -231,6 +251,7 @@ const ApiPlayerRouteWithChildren = ApiPlayerRoute._addFileChildren(
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ApiArtifactsRoute: ApiArtifactsRoute,
+  ApiHarnessRoute: ApiHarnessRoute,
   ApiPlayerRoute: ApiPlayerRouteWithChildren,
   ApiPreviewRoute: ApiPreviewRoute,
   ApiRunRoute: ApiRunRoute,
