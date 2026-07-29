@@ -65,9 +65,12 @@ test('curl commands cap size and encode path segments', () => {
   expect(cmd).toContain('assets/a%20b.jpg')
   expect(cmd).toContain('base64')
   // curl downloads to a file and ITS status is the exec's status — piping
-  // curl straight into base64 would serve truncated bytes as a 200.
+  // curl straight into base64 would serve truncated bytes as a 200. The
+  // status must ride a trailing test, never `exit`, which would kill the
+  // sandbox's persistent exec shell.
   expect(cmd).toContain('-o "$f"')
-  expect(cmd).toContain('exit $s')
+  expect(cmd.endsWith('[ $s -eq 0 ]')).toBe(true)
+  expect(cmd).not.toContain('exit')
 })
 
 test('isPlayerThreadKey matches minted keys, rejects the rest', () => {

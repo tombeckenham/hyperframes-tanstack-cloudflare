@@ -124,11 +124,14 @@ export function assetCurlCommand(
     .map((segment) => encodeURIComponent(segment))
     .join('/')
   // `base64 | tr -d '\n'` is portable across GNU and BSD base64 in the image.
+  // The trailing `[ $s -eq 0 ]` makes curl's status the command's status —
+  // NEVER `exit`: sandbox exec runs in a persistent shell session, and `exit`
+  // kills the session itself ("shell exited" errors on every later exec).
   return (
     `f=$(mktemp) && curl -sf --max-time ${PLAYER_FETCH_TIMEOUT_SEC} ` +
     `--max-filesize ${PLAYER_ASSET_MAX_BYTES} -o "$f" ` +
     `http://127.0.0.1:${port}/api/projects/${encodeURIComponent(project)}/preview/${encoded}; ` +
-    `s=$?; [ $s -eq 0 ] && base64 < "$f" | tr -d '\\n'; rm -f "$f"; exit $s`
+    `s=$?; [ $s -eq 0 ] && base64 < "$f" | tr -d '\\n'; rm -f "$f"; [ $s -eq 0 ]`
   )
 }
 
