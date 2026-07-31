@@ -20,6 +20,7 @@ import { Marker, MarkerContent } from '@/components/ui/marker'
 import { AssistantPartView } from './message-parts'
 import { toolResultsById } from '@/lib/tool-urls'
 import { DEMO_BRIEFS } from '@/lib/demo-briefs'
+import { useHarness } from '@/hooks/use-harness'
 import type { DemoBrief } from '@/lib/demo-briefs'
 import type { UIMessage } from '@tanstack/ai-react'
 
@@ -100,6 +101,12 @@ function DemoCard({
 }
 
 function EmptyState({ onPick }: { onPick: (text: string) => void }) {
+  // Harness-gated briefs (e.g. xAI Imagine) stay hidden until the harness is
+  // known to match — better a card popping in than one the agent can't fulfil.
+  const harness = useHarness()
+  const briefs = DEMO_BRIEFS.filter(
+    (demo) => demo.harness === undefined || demo.harness === harness,
+  )
   return (
     <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
       <p className="text-lg font-medium">HyperFrames Studio</p>
@@ -108,7 +115,7 @@ function EmptyState({ onPick }: { onPick: (text: string) => void }) {
         in a sandbox, previews it live, and renders it to MP4.
       </p>
       <div className="mt-3 grid w-full max-w-md grid-cols-1 gap-2 sm:grid-cols-2">
-        {DEMO_BRIEFS.map((demo) => (
+        {briefs.map((demo) => (
           <DemoCard key={demo.id} demo={demo} onPick={onPick} />
         ))}
       </div>

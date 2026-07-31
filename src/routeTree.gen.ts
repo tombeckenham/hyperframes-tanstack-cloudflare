@@ -11,12 +11,14 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiArtifactsRouteImport } from './routes/api.artifacts'
+import { Route as ApiHarnessRouteImport } from './routes/api.harness'
 import { Route as ApiPlayerRouteImport } from './routes/api.player'
 import { Route as ApiPreviewRouteImport } from './routes/api.preview'
 import { Route as ApiRunRouteImport } from './routes/api.run'
 import { Route as PSplatRouteImport } from './routes/p.$'
 import { Route as RSplatRouteImport } from './routes/r.$'
 import { Route as ApiUploadsRunIdNameRouteImport } from './routes/api.uploads.$runId.$name'
+import { Route as ApiPlayerMediaThreadKeyPortProjectSplatRouteImport } from './routes/api.player.media.$threadKey.$port.$project.$'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -26,6 +28,11 @@ const IndexRoute = IndexRouteImport.update({
 const ApiArtifactsRoute = ApiArtifactsRouteImport.update({
   id: '/api/artifacts',
   path: '/api/artifacts',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiHarnessRoute = ApiHarnessRouteImport.update({
+  id: '/api/harness',
+  path: '/api/harness',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiPlayerRoute = ApiPlayerRouteImport.update({
@@ -58,75 +65,94 @@ const ApiUploadsRunIdNameRoute = ApiUploadsRunIdNameRouteImport.update({
   path: '/api/uploads/$runId/$name',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPlayerMediaThreadKeyPortProjectSplatRoute =
+  ApiPlayerMediaThreadKeyPortProjectSplatRouteImport.update({
+    id: '/media/$threadKey/$port/$project/$',
+    path: '/media/$threadKey/$port/$project/$',
+    getParentRoute: () => ApiPlayerRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/api/artifacts': typeof ApiArtifactsRoute
-  '/api/player': typeof ApiPlayerRoute
+  '/api/harness': typeof ApiHarnessRoute
+  '/api/player': typeof ApiPlayerRouteWithChildren
   '/api/preview': typeof ApiPreviewRoute
   '/api/run': typeof ApiRunRoute
   '/p/$': typeof PSplatRoute
   '/r/$': typeof RSplatRoute
   '/api/uploads/$runId/$name': typeof ApiUploadsRunIdNameRoute
+  '/api/player/media/$threadKey/$port/$project/$': typeof ApiPlayerMediaThreadKeyPortProjectSplatRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/api/artifacts': typeof ApiArtifactsRoute
-  '/api/player': typeof ApiPlayerRoute
+  '/api/harness': typeof ApiHarnessRoute
+  '/api/player': typeof ApiPlayerRouteWithChildren
   '/api/preview': typeof ApiPreviewRoute
   '/api/run': typeof ApiRunRoute
   '/p/$': typeof PSplatRoute
   '/r/$': typeof RSplatRoute
   '/api/uploads/$runId/$name': typeof ApiUploadsRunIdNameRoute
+  '/api/player/media/$threadKey/$port/$project/$': typeof ApiPlayerMediaThreadKeyPortProjectSplatRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/api/artifacts': typeof ApiArtifactsRoute
-  '/api/player': typeof ApiPlayerRoute
+  '/api/harness': typeof ApiHarnessRoute
+  '/api/player': typeof ApiPlayerRouteWithChildren
   '/api/preview': typeof ApiPreviewRoute
   '/api/run': typeof ApiRunRoute
   '/p/$': typeof PSplatRoute
   '/r/$': typeof RSplatRoute
   '/api/uploads/$runId/$name': typeof ApiUploadsRunIdNameRoute
+  '/api/player/media/$threadKey/$port/$project/$': typeof ApiPlayerMediaThreadKeyPortProjectSplatRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
     | '/api/artifacts'
+    | '/api/harness'
     | '/api/player'
     | '/api/preview'
     | '/api/run'
     | '/p/$'
     | '/r/$'
     | '/api/uploads/$runId/$name'
+    | '/api/player/media/$threadKey/$port/$project/$'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/api/artifacts'
+    | '/api/harness'
     | '/api/player'
     | '/api/preview'
     | '/api/run'
     | '/p/$'
     | '/r/$'
     | '/api/uploads/$runId/$name'
+    | '/api/player/media/$threadKey/$port/$project/$'
   id:
     | '__root__'
     | '/'
     | '/api/artifacts'
+    | '/api/harness'
     | '/api/player'
     | '/api/preview'
     | '/api/run'
     | '/p/$'
     | '/r/$'
     | '/api/uploads/$runId/$name'
+    | '/api/player/media/$threadKey/$port/$project/$'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ApiArtifactsRoute: typeof ApiArtifactsRoute
-  ApiPlayerRoute: typeof ApiPlayerRoute
+  ApiHarnessRoute: typeof ApiHarnessRoute
+  ApiPlayerRoute: typeof ApiPlayerRouteWithChildren
   ApiPreviewRoute: typeof ApiPreviewRoute
   ApiRunRoute: typeof ApiRunRoute
   PSplatRoute: typeof PSplatRoute
@@ -148,6 +174,13 @@ declare module '@tanstack/react-router' {
       path: '/api/artifacts'
       fullPath: '/api/artifacts'
       preLoaderRoute: typeof ApiArtifactsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/harness': {
+      id: '/api/harness'
+      path: '/api/harness'
+      fullPath: '/api/harness'
+      preLoaderRoute: typeof ApiHarnessRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/player': {
@@ -192,13 +225,34 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiUploadsRunIdNameRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/player/media/$threadKey/$port/$project/$': {
+      id: '/api/player/media/$threadKey/$port/$project/$'
+      path: '/media/$threadKey/$port/$project/$'
+      fullPath: '/api/player/media/$threadKey/$port/$project/$'
+      preLoaderRoute: typeof ApiPlayerMediaThreadKeyPortProjectSplatRouteImport
+      parentRoute: typeof ApiPlayerRoute
+    }
   }
 }
+
+interface ApiPlayerRouteChildren {
+  ApiPlayerMediaThreadKeyPortProjectSplatRoute: typeof ApiPlayerMediaThreadKeyPortProjectSplatRoute
+}
+
+const ApiPlayerRouteChildren: ApiPlayerRouteChildren = {
+  ApiPlayerMediaThreadKeyPortProjectSplatRoute:
+    ApiPlayerMediaThreadKeyPortProjectSplatRoute,
+}
+
+const ApiPlayerRouteWithChildren = ApiPlayerRoute._addFileChildren(
+  ApiPlayerRouteChildren,
+)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ApiArtifactsRoute: ApiArtifactsRoute,
-  ApiPlayerRoute: ApiPlayerRoute,
+  ApiHarnessRoute: ApiHarnessRoute,
+  ApiPlayerRoute: ApiPlayerRouteWithChildren,
   ApiPreviewRoute: ApiPreviewRoute,
   ApiRunRoute: ApiRunRoute,
   PSplatRoute: PSplatRoute,
