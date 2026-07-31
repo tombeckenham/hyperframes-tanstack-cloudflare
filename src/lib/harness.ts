@@ -15,6 +15,10 @@ export const HARNESS_NAMES = ['grok', 'claude-code'] as const
 
 export type HarnessName = (typeof HARNESS_NAMES)[number]
 
+export function isHarnessName(value: unknown): value is HarnessName {
+  return HARNESS_NAMES.some((name) => name === value)
+}
+
 /** CUSTOM stream event each harness emits so follow-up runs can `--resume`. */
 export const HARNESS_SESSION_ID_EVENT: Record<HarnessName, string> = {
   grok: 'grok-build.session-id',

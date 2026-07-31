@@ -15,6 +15,9 @@
  * (`/api/projects/<project>/preview`), fetched with an in-container curl and
  * returned via exec stdout. NOT `sandbox.containerFetch`: over the
  * rpc-transport stub in local dev that call never resolved, hanging the route.
+ * The upstream's `/api/runtime.js` script tag 404s on our origin — intentional;
+ * the player injects runtime from its CDN when needed, and self-contained
+ * compositions run through `__timelines` without it.
  *
  * Relative assets (images, fonts, …) resolve via `<base href>` to
  * `/api/player/media/...` (see `src/routes/api.player.media.$threadKey.$port.$project.$.ts`)
@@ -23,7 +26,9 @@
  *
  * TRUST: serves LLM-authored HTML same-origin without the `/p/*` CSP sandbox
  * (that would give an opaque origin and re-break the player). `threadId` is
- * derived from the visitor's session cookie — only their own thread.
+ * derived from the visitor's session cookie — only their own thread. Blast
+ * radius differs from durable `/p/*` URLs: exposure is "your agent runs script
+ * in your page", accepted as the cost of a working player.
  *
  * `port`/`project` come from the client (its ensure result). They only select
  * which port/path of the CALLER'S OWN container to read.
@@ -34,7 +39,10 @@ import { getSandbox } from '@cloudflare/sandbox'
 import { z } from 'zod'
 import {
   compositionCurlCommand,
+  isPlayerPort,
+  isPlayerProject,
   isPlayerThreadKey,
+  playerProxyResponse,
   rewritePlayerAssetBase,
 } from '../lib/player-proxy'
 import { deriveThreadId, resolveSession } from '../lib/session'
@@ -50,14 +58,11 @@ const searchSchema = z.object({
     .refine(isPlayerThreadKey, { message: 'invalid threadKey' }),
   port: z.coerce
     .number()
-    .int()
-    .min(1024)
-    .max(65535)
-    .refine((p) => p !== 3000, { message: 'port 3000 is the control plane' })
+    .refine(isPlayerPort, { message: 'invalid port' })
     .default(3002),
   project: z
     .string()
-    .regex(/^[A-Za-z0-9._-]{1,64}$/u)
+    .refine(isPlayerProject, { message: 'invalid project' })
     .default('studio'),
 })
 
@@ -93,9 +98,14 @@ export const Route = createFileRoute('/api/player')({
                 compositionCurlCommand(port, project),
               )
               if (!result.success || result.stdout.length === 0) {
-                return new Response(
+                const detail =
+                  `${result.stderr}\n${result.stdout}`.trim() || 'no output'
+                console.error('[api/player] composition fetch failed:', detail)
+                return playerProxyResponse(
                   'the preview server did not return the composition — is it running?',
-                  { status: 502 },
+                  502,
+                  { 'content-type': 'text/plain; charset=utf-8' },
+                  setCookie,
                 )
               }
               const html = rewritePlayerAssetBase(
@@ -104,20 +114,25 @@ export const Route = createFileRoute('/api/player')({
                 port,
                 project,
               )
-              const headers = new Headers({
-                'content-type': 'text/html; charset=utf-8',
-                'cache-control': 'no-store',
-                // Embeddable by our own pages (the player's iframe), nobody
-                // else's.
-                'content-security-policy': "frame-ancestors 'self'",
-              })
-              if (setCookie !== null) headers.set('set-cookie', setCookie)
-              return new Response(html, { headers })
+              return playerProxyResponse(
+                html,
+                200,
+                {
+                  'content-type': 'text/html; charset=utf-8',
+                  'cache-control': 'no-store',
+                  // Embeddable by our own pages (the player's iframe), nobody
+                  // else's.
+                  'content-security-policy': "frame-ancestors 'self'",
+                },
+                setCookie,
+              )
             } catch (error) {
               console.error('[api/player] proxy error:', error)
-              return new Response(
+              return playerProxyResponse(
                 error instanceof Error ? error.message : 'player proxy error',
-                { status: 502 },
+                502,
+                { 'content-type': 'text/plain; charset=utf-8' },
+                setCookie,
               )
             }
           },

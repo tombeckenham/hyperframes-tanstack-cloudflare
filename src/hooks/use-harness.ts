@@ -2,15 +2,12 @@
  * Which coding agent this deployment runs — `grok` or `claude-code` — from
  * `GET /api/harness`. Returns `null` until known (or if the lookup fails),
  * which hides harness-gated demo briefs rather than offering the agent a
- * brief it cannot fulfil.
+ * brief it cannot fulfil. React Query keeps the result for the page lifetime
+ * (`staleTime: Infinity`); the route also sends a short HTTP cache header.
  */
 import { useQuery } from '@tanstack/react-query'
-import { HARNESS_NAMES } from '@/lib/harness'
+import { isHarnessName } from '@/lib/harness'
 import type { HarnessName } from '@/lib/harness'
-
-function isHarnessName(value: unknown): value is HarnessName {
-  return HARNESS_NAMES.some((name) => name === value)
-}
 
 async function fetchHarness(): Promise<HarnessName> {
   const response = await fetch('/api/harness')

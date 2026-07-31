@@ -5,8 +5,8 @@
  * on harness-specific abilities (xAI Imagine image generation) and must only
  * be offered when that harness is active.
  *
- * The name is deployment-wide and not a secret; the response is cacheable
- * client-side for a while.
+ * The name is deployment-wide and not a secret. `useHarness` caches it for
+ * the page lifetime; this route also sends `private, max-age=300`.
  */
 import { createFileRoute } from '@tanstack/react-router'
 import { env } from 'cloudflare:workers'
